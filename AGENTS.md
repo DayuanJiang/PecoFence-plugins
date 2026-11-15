@@ -81,7 +81,8 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   that type. Each fence of the plugin keeps its own settings.
 - Users see the permissions in plain words before they install. An update that asks for more
   (a new host, reading or writing the clipboard where it did not before, another `layer`,
-  `background`, `folders` or `notify` turned on, a new program) waits until the user agrees.
+  `background`, `folders` or `notify` turned on, a new program) waits until the user agrees. So
+  does an update whose `author` differs from the installed one; its warning names both.
 
 ## 3. The light layer: `main.js`
 
@@ -109,7 +110,7 @@ These answer at once:
 | Call | What it does |
 |---|---|
 | `pf.on(event, fn)` | `fn(data)` runs on the event (section 3.2); several handlers of one event run in the order they were added |
-| `pf.show(view)` | what the fence shows (section 3.3). At most 10 a second take effect; the last one wins. Until the first `pf.show` after a start, the fence shows the view the plugin showed last time |
+| `pf.show(view)` | what the fence shows (section 3.3). At most 10 a second take effect; the last one wins. Until the first `pf.show` after a start, the fence shows the view the plugin showed last time, which PecoFence keeps in a file; for a plugin whose `clipboard` permission reads, it keeps none, and the fence is empty until then |
 | `pf.every(seconds, fn, { align })` | repeats `fn`, at most once a second. `align: "second"` or `"minute"` rounds the step up to whole seconds or minutes and runs `fn` just after the clock turns. Returns a number, the timer's id |
 | `pf.after(seconds, fn)` | runs `fn` once, at least 1 second later. Returns an id |
 | `pf.cancel(id)` | stops a timer. Timers wait while the fence is hidden (unless `background`). A plugin has at most 20: one more throws a `RangeError` |
@@ -145,7 +146,7 @@ thread:
 | `pf.sys.battery()` | | `{ percent, plugged }`, or `null` on a computer without a battery |
 | `pf.open(url)` | an `http` or `https` address whose host is in `network` or `links`, called while a `click` or `dblclick` handler runs | `null`: the page opens in the browser |
 | `pf.openSystem("taskmgr")` | the name `taskmgr` (the only one for now) | `null`: Task Manager opens |
-| `pf.run(program, args)` | `program` in `system`, and 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB. Programs it starts end with it, or at the 30 seconds limit |
+| `pf.run(program, args)` | `program` one of the texts in `system`, written as there (only capital and small letters may differ: with `"system": ["ipconfig.exe"]`, `pf.run("ipconfig.exe", ["/all"])` runs and `pf.run("ipconfig")` is refused); `args` an array of texts; 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB. Programs it starts end with it, or at the 30 seconds limit |
 | `pf.folder.pick()` | `folders` | the path of the folder the user picked (PecoFence remembers it for this fence), or `null` when they cancelled |
 | `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `[{ name, path, folder, size, modified }]`, at most 10,000: `folder` is `true` for a folder, `modified` is in ms since 1970 |
 | `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
@@ -156,7 +157,15 @@ with a dot, and not a device name (`con`, `prn`, `aux`, `nul`, `com1` to `com9`,
 also with an extension such as `nul.txt`). A data file holds at most 20 MB: `pf.data.write` of
 more, and `pf.data.read` of a larger file, reject. `pf.data.write` replaces the file whole, so a
 read never finds half of it. The data files are shared by all fences of the plugin, at most 200 MB
-in all, and deleted when it is uninstalled; deleting a fence leaves them.
+in all, and deleted when it is uninstalled.
+
+**A fence's own files.** A data file whose name starts with a fence's id and a hyphen
+(`pf.fence.id + "-history.json"`; the id is 36 characters, so 27 are left for the rest) belongs to
+that fence. PecoFence deletes it about 3 seconds after the fence is deleted (its `stop` handler has
+run by then), and at a start for fences no layout holds any more. Name what one fence keeps that
+way; other files stay until the plugin is uninstalled. Undoing the delete, or a snapshot that
+still has the fence, brings the fence back without those files: expect them to be missing, as at
+a first start.
 
 **Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
 an `Error` at once that says what it needs, such as `http.get needs an https address with
@@ -204,8 +213,9 @@ before the handler's first `await`.
 | `text` | a one-line box closed with Enter or a click elsewhere (Esc sends nothing), or the note changed (edited, ticked, a to-do moved) | `{ id, text }`: the input's `id`, and the box's text or the note's whole text |
 | `settings` | the user changed this fence's settings | the new settings (also in `pf.settings`) |
 | `clipboard` | the clipboard changed, once per copy (100 ms after its last step), also when the plugin itself wrote it; not for content marked private; only with `clipboard` `read` or `readwrite` | none |
+| `theme` | the fence's text changed between light and dark (after a change of the theme or of the fence's color) | `"light"` or `"dark"` (also in `pf.theme`) |
 | `timechange` | the system time, the time zone or the region format changed | none |
-| `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits: it has 1 second, and the calls it makes then still run | none |
+| `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits. The handler has its 50 ms as any run. The calls it makes then are sent (at most 16 at once, as always), but their Promises never settle: the plugin is gone when the answers come, so it cannot wait for one | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
@@ -299,13 +309,20 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
 ## 4. The web layer: `index.html`
 
 - PecoFence serves the plugin's files itself at `https://<id>.plugins.pecofence/` and sets a fixed
-  Content Security Policy on every answer: scripts, styles, pictures and fonts only from the
-  plugin's own files; `connect-src` only the hosts in `network`; no frames, no forms. A CSP the
-  plugin writes itself does not count.
-- Before the page's scripts run, PecoFence puts the same `pf` into the page (`window.pf`), with the
-  same names and rules as section 3.1, except that every call returns a Promise and `pf.show` is
-  not there. A call refused there, also one past the 4 requests and 16 calls a plugin may have
-  under way, rejects its Promise. `pf.open` works within 1 second after a mouse press in the fence.
+  Content Security Policy on every answer:
+  `default-src 'self'; connect-src 'self' https://<host> wss://<host> ...; frame-src 'none'; form-action 'none'`
+  with each host of `network`. So scripts, styles, pictures and fonts come only from the plugin's
+  own files: **no inline script or style** (no `<script>` with code in it, no `<style>` element,
+  no `style="..."` or `onclick="..."` attribute; put them in `.js` and `.css` files and set styles
+  from a script through `element.style`), no `data:` or `blob:` addresses for pictures, fonts or
+  scripts, no frames, no forms. A CSP the plugin writes itself does not count. The web check
+  (section 8) serves the page with this header and fails what it blocks.
+- Before the page's scripts run, PecoFence puts a `pf` into the page (`window.pf`) with the names
+  and rules of section 3.1, except: every call returns a Promise (`pf.time.now()` too); `pf.on`
+  returns nothing; `pf.show`, `pf.every`, `pf.after` and `pf.cancel` are not there (use the
+  browser's `setInterval` and `setTimeout`, and stop them on `hide`); `pf.post` is added (below).
+  A call refused there, also one past the 4 requests and 16 calls a plugin may have under way,
+  rejects its Promise. `pf.open` works within 1 second after a mouse press in the fence.
 - The page's background is transparent; the fence's glass shows through. Follow `pf.theme`.
 - Refused for every page: permission requests (camera, location, notifications, clipboard), other
   sites, new windows, downloads, other protocols, and WebRTC.
@@ -316,8 +333,11 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   with `data` on the other. In `main.js`, `pf.post` throws a `RangeError` for a message over 1 MB,
   or when one run (an event, a timer or an answer) would send more than 100 messages or 4 MB; a
   page's message over 1 MB is dropped and its call gets no answer.
-- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message` and
-  `theme` (`light` or `dark`); `pf.theme`, `pf.settings` and `pf.fence` follow them.
+- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message`, `theme`
+  (`light` or `dark`) and, with `clipboard` `read` or `readwrite`, `clipboard`; `pf.theme`,
+  `pf.settings` and `pf.fence` follow them. A page gets no `start`: its scripts run when it loads.
+  An error in a handler is caught and written to the page's console.
+- A web plugin's `main.js` need not call `pf.show`: the page is what the fence shows.
 
 ## 5. Hard rules: safety (one failure and the pull request is not merged)
 
