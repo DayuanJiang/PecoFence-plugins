@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Runs a web plugin's index.html in headless Chromium and reports what it reaches (AGENTS.md 4, 5).
 
-The page gets its files from https://<id>.plugins.pecofence/ as in PecoFence, each with the
+The page gets its files from https://<id>.plugins.pecofence/ (PecoFence itself uses
+pecofence-plugin://<id>/; a plugin must not depend on its address), each with the
 Content Security Policy PecoFence sends, and a stand-in `pf` that records every call and answers
 with fixed values of the shapes AGENTS.md gives. Nothing reaches the network: every other request
 and WebSocket is recorded, then refused. Fails on a request to a host the manifest does not
@@ -69,7 +70,7 @@ STUB = """
   };
   const pf = {
     on: (name, fn) => { record("on", [name]); (handlers[name] = handlers[name] || []).push(fn); },
-    post: (d) => { const size = JSON.stringify(d === undefined ? null : d).length; record("post", [size], size > 1048576 ? "a message over 1 MB is dropped" : ""); },
+    post: (d) => { const size = new TextEncoder().encode(JSON.stringify(d === undefined ? null : d)).length; const why = size > 1048576 ? "a message over 1 MB is refused" : ""; record("post", [size], why); return why ? Promise.reject(new RangeError("pf.post: " + why)) : Promise.resolve(null); },
     time: { now: () => call("time.now", [], null, Date.now()), format: (ms, kind) => call("time.format", [ms, kind], null, new Date(ms).toLocaleString()) },
     http: { get: (u, o) => call("http.get", [u, o], offline(u, P.network || [])), post: (u, o) => call("http.post", [u, o], offline(u, P.network || [])) },
     data: { read: (n) => call("data.read", [n], null, data.has(n) ? data.get(n) : null),

@@ -19,7 +19,7 @@ A plugin is one folder `plugins/<id>/`. It comes in one of two layers:
 | Layer | Files | What PecoFence does |
 |---|---|---|
 | `light` | `plugin.json`, `main.js`, `README.md` | runs `main.js` in a small JavaScript engine inside PecoFence (QuickJS); the plugin says what to show with `pf.show`, PecoFence draws it like its own rows |
-| `web` | `plugin.json`, `index.html` and the `.js`, `.css`, pictures and fonts it uses (sub-folders allowed), `README.md`; optional `main.js` | shows `index.html` in the fence (WebView2, the engine of Edge), at `https://<id>.plugins.pecofence/` |
+| `web` | `plugin.json`, `index.html` and the `.js`, `.css`, pictures and fonts it uses (sub-folders allowed), `README.md`; optional `main.js` | shows `index.html` in the fence (WebView2, the engine of Edge), at `pecofence-plugin://<id>/` |
 
 Choose `light` unless the plugin needs free drawing, animation or a whole page of its own: a light
 plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
@@ -308,7 +308,8 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
 
 ## 4. The web layer: `index.html`
 
-- PecoFence serves the plugin's files itself at `https://<id>.plugins.pecofence/` and sets a fixed
+- PecoFence serves the plugin's files itself at `pecofence-plugin://<id>/` (a secure origin of its
+  own; the address never reaches the network or a proxy) and sets a fixed
   Content Security Policy on every answer:
   `default-src 'self'; connect-src 'self' https://<host> wss://<host> ...; frame-src 'none'; form-action 'none'`
   with each host of `network`. So scripts, styles, pictures and fonts come only from the plugin's
@@ -322,7 +323,10 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   returns nothing; `pf.show`, `pf.every`, `pf.after` and `pf.cancel` are not there (use the
   browser's `setInterval` and `setTimeout`, and stop them on `hide`); `pf.post` is added (below).
   A call refused there, also one past the 4 requests and 16 calls a plugin may have under way,
-  rejects its Promise. `pf.open` works within 1 second after a mouse press in the fence.
+  rejects its Promise; so does a call whose arguments are over 1 MB (a `RangeError`). `pf.open`
+  works within 1 second after a mouse press in the fence.
+- Web plugins need WebView2 152 or newer (Windows updates it by itself); on an older one the
+  fence shows 「这个插件需要更新 WebView2。」 instead of the page.
 - The page's background is transparent; the fence's glass shows through. Follow `pf.theme`.
 - Refused for every page: permission requests (camera, location, notifications, clipboard), other
   sites, new windows, downloads, other protocols, and WebRTC.
@@ -331,8 +335,9 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
 - An optional `main.js` runs in the light layer next to the page, with section 3's `pf`. The
   two pass messages: `pf.post(data)` on one side (JSON, at most 1 MB) is a `message` event
   with `data` on the other. In `main.js`, `pf.post` throws a `RangeError` for a message over 1 MB,
-  or when one run (an event, a timer or an answer) would send more than 100 messages or 4 MB; a
-  page's message over 1 MB is dropped and its call gets no answer.
+  or when one run (an event, a timer or an answer) would send more than 100 messages or 4 MB. In
+  the page, `pf.post` returns a Promise: `null` once PecoFence handed the message on, a
+  `RangeError` for one over 1 MB, an error while 64 messages still wait for `main.js`.
 - The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message`, `theme`
   (`light` or `dark`) and, with `clipboard` `read` or `readwrite`, `clipboard`; `pf.theme`,
   `pf.settings` and `pf.fence` follow them. A page gets no `start`: its scripts run when it loads.
