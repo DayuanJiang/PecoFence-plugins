@@ -1,0 +1,34 @@
+# The automatic review of AGENTS.md: Claude (in Amazon Bedrock) reads a one-plugin pull request and
+# approves it or requests changes. It runs this repository's own tools from main and reads the pull
+# request's files as text through the GitHub API; it never checks out or runs them. Only this
+# workflow file on main can assume the AWS role (its trust policy names it).
+name: review
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::904233105607:role/pecofence-plugins-review
+          aws-region: us-east-1
+      - name: Install the Anthropic SDK
+        run: pip install --quiet --disable-pip-version-check "anthropic[bedrock]"
+      - name: Review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: python3 -I tools/review.py
