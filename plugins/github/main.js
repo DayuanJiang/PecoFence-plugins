@@ -161,10 +161,14 @@ async function ask() {
     busy = false;
   }
   nextAt = pf.time.now() + wait;
-  // The setting changed while the answer was on its way: that answer is for the old one.
+  // The setting changed while the answer was on its way: that answer is for the old one. The
+  // 2 second wait after the change asks; when it ran out meanwhile (it found a request under
+  // way), the new one is asked now.
   if (repo() !== name) {
     items = null;
-    return ask();
+    problem = "";
+    if (!settled) return ask();
+    return draw();
   }
   draw();
 }

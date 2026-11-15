@@ -189,7 +189,8 @@ async function sameEntry(found) {
 // one stays where it is). Pictures are always new entries: the plugin does not see their bytes.
 async function add(found) {
   const same = await sameEntry(found);
-  if (same) {
+  // An entry deleted or purged while its text was read is not put back: the copy comes in new.
+  if (same && entries.includes(same)) {
     if (!same.pinned) {
       entries = [same, ...entries.filter((e) => e !== same)];
       same.at = pf.time.now();

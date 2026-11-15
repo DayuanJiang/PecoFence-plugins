@@ -40,8 +40,9 @@ plugin's data folder (`plugins-data\clipboard-history` beside PecoFence's settin
 
 When PecoFence quits, the files of entries that are not pinned are deleted (what is left then is
 deleted at the next start). PecoFence keeps no copy of what this fence shows. Each fence keeps its
-own history, in files named after the fence: deleting the fence deletes them, pinned entries
-too. Uninstalling the plugin deletes the whole folder.
+own history, in files named after the fence: when the fence is deleted, PecoFence deletes them,
+pinned entries too, at its next start (undoing the delete keeps them). Uninstalling the plugin
+deletes the whole folder.
 
 ---
 
