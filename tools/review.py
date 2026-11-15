@@ -235,9 +235,11 @@ def main():
     except Exception as e:
         # Whatever stopped the review (a refusal, a cut answer, Bedrock, GitHub, an answer that
         # does not read), this commit is not approved: changes are requested, never only a comment.
+        # The public text names only the error's type (an AWS error can name the role and the
+        # account); the details are in this workflow's log.
         traceback.print_exc()
         post_review(pr["head"]["sha"], "REQUEST_CHANGES", "**Automatic review**\n\nThe review could not finish "
-                    f"(`{type(e).__name__}: {str(e)[:200]}`), so this pull request is not approved. Push again to retry.")
+                    f"(`{type(e).__name__}`), so this pull request is not approved. Push again to retry.")
         return 1
 
 
