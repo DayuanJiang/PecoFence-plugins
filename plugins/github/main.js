@@ -1,8 +1,9 @@
 // GitHub: the newest open issues and pull requests of the repository in this fence's setting
 // "repo" (owner/name); a click on one opens it in the browser. It asks GitHub without signing
 // in, which allows 60 requests an hour from one network address: once every 10 minutes while the
-// fence shows, and when GitHub says to wait (Retry-After, or the reset time of its limit), it
-// waits that long, clicks included.
+// fence shows, and when GitHub says to wait (Retry-After, or the reset time of its limit; a 403 or
+// 429 without either, 10 minutes), it waits that long, clicks included. After a settings change
+// it asks 2 seconds later, once the changes stopped.
 
 const COUNT = 8;
 const TEXTS = {
@@ -77,20 +78,23 @@ let nextAt = 0; // when to ask next
 let waitUntil = 0; // GitHub asked to wait until then: clicks wait too
 let problem = "";
 let busy = false;
+let settled = 0; // the timer that asks 2 seconds after the last settings change
 
-// The setting as owner/name; a pasted github.com address works too. "" when it is not one.
+// The setting as owner/name; a pasted github.com address works too. "" when it is not one (a
+// part of only dots, such as "..", would make another address of the API).
 function repo() {
   const r = String(pf.settings.repo || "").trim()
     .replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "")
     .replace(/(\.git)?\/*$/, "");
-  return /^[\w.-]+\/[\w.-]+$/.test(r) ? r : "";
+  return /^[\w.-]+\/[\w.-]+$/.test(r) && !r.split("/").some((part) => /^\.+$/.test(part)) ? r : "";
 }
 
 function draw() {
   const name = repo();
   if (!name) return pf.show({ rows: [{ text: t.bad, color: "orange" }] });
   const rows = [{ id: "repo", text: name, icon: "🐙", bold: true, tip: `https://github.com/${name}` }, { separator: true }];
-  if (!items) rows.push({ text: problem || t.loading, color: "gray" });
+  // Before the first list, the row that says what went wrong is the one to click to ask again.
+  if (!items) rows.push({ text: problem || t.loading, color: "gray", ...(problem && { id: "refresh" }) });
   else if (!items.length) rows.push({ text: t.none, color: "gray" });
   for (const i of items || []) rows.push({ id: i.id, text: i.text, icon: i.pr ? "🔀" : "🟢", tip: i.tip });
   if (items) {
@@ -139,7 +143,9 @@ async function ask() {
       items = null;
       problem = fill(t.missing, name);
     } else if (pause > 0 || answer.status === 403 || answer.status === 429) {
-      wait = Math.max(pause, MINUTE);
+      // Without Retry-After or a reset time, GitHub's limit for too many requests: 10 minutes.
+      wait = pause > 0 ? pause : 10 * MINUTE;
+      waitUntil = pf.time.now() + wait;
       problem = fill(t.limited, at(wait));
     } else {
       problem = fill(t.failed, at(wait));
@@ -178,7 +184,11 @@ pf.on("settings", () => {
   items = null;
   problem = "";
   draw();
-  ask();
+  pf.cancel(settled);
+  settled = pf.after(2, () => {
+    settled = 0;
+    ask();
+  });
 });
 pf.on("click", (e) => {
   const name = repo();
