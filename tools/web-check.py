@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Runs a web plugin's index.html in headless Chromium and reports what it reaches (AGENTS.md 4, 5).
 
-The page gets its files from https://<id>.plugins.pecofence/ as in PecoFence, and a stand-in `pf`
-that records every call and answers with fixed values. Nothing reaches the network: every other
-request and WebSocket is recorded, then refused. Fails on a request to a host the manifest does not
+The page gets its files from https://<id>.plugins.pecofence/ as in PecoFence, each with the
+Content Security Policy PecoFence sends, and a stand-in `pf` that records every call and answers
+with fixed values of the shapes AGENTS.md gives. Nothing reaches the network: every other request
+and WebSocket is recorded, then refused. Fails on a request to a host the manifest does not
 declare, a script, style, font or picture from the network, a WebSocket to an undeclared host,
-WebRTC, a refused pf call, or a page that does not load.
+WebRTC, a refused pf call, something the CSP blocks (an inline script or style, a data: picture),
+an error or a rejected Promise nobody catches, one of the plugin's own files that is not there,
+or a page that does not load.
 
 Usage: python3 tools/web-check.py plugins/<id> [--seconds 20] [--json result.json]
 Needs: pip install playwright && playwright install chromium
@@ -24,11 +27,14 @@ from playwright.sync_api import sync_playwright
 DATA_TYPES = {"fetch", "xhr", "eventsource", "ping", "websocket"}
 CLIPBOARD = ["none", "write", "read", "readwrite"]
 
-# The stand-in pf: the same names as AGENTS.md 3.1, every call a Promise, each call recorded.
+# The stand-in pf: the names of the page's pf in PecoFence (AGENTS.md section 4), every call a
+# Promise, each call recorded, the answers in the shapes of section 3.1. Events update pf.theme,
+# pf.settings and pf.fence first, and an error in a handler is caught and counted, as there.
 STUB = """
 (() => {
   const P = __PERMS__, record = (name, args, refused) => window.__pfRecord(name, JSON.stringify(args), refused || "");
   const handlers = {}, data = new Map();
+  const state = { lang: "en", theme: "dark", settings: __SETTINGS__, fence: { id: "check", width: 320, height: 240 } };
   const clip = ["none", "write", "read", "readwrite"].indexOf(P.clipboard || "none");
   // As PecoFence reads an address (AGENTS.md 3.1): a small-letter scheme; a control character
   // anywhere, or a user name, a backslash or a space before the path, is refused.
@@ -40,38 +46,61 @@ STUB = """
   const call = (name, args, refuse, answer) => {
     const why = refuse ? refuse() : "";
     record(name, args, why);
-    return why ? Promise.reject(new Error(why)) : Promise.resolve(answer);
+    return why ? Promise.reject(new Error(why)) : Promise.resolve(answer === undefined ? null : answer);
   };
   const needHost = (u, list, field) => () => !host(u) ? "an address PecoFence refuses (AGENTS.md 3.1)"
     : list.includes(host(u)) ? "" : `${host(u)} is not in permissions.${field}`;
-  const needClip = (n) => () => clip >= n ? "" : "permissions.clipboard does not allow it";
+  // Reading and writing are two rights: read is 2 (read, readwrite), write is 1 (write, readwrite).
+  const needClip = (n) => () => (n === 2 ? clip >= 2 : clip === 1 || clip === 3) ? "" : "permissions.clipboard does not allow it";
   const needFlag = (f) => () => P[f] ? "" : `permissions.${f} is not true`;
   const offline = (u, list) => () => needHost(u, list, "network")() || "offline (the check has no network)";
+  // pf.open works within 1 second after a mouse press in the fence.
+  let pressed = -1e9;
+  addEventListener("pointerdown", () => (pressed = Date.now()), true);
+  document.addEventListener("securitypolicyviolation", (e) => window.__pfCsp(`${e.effectiveDirective || e.violatedDirective} blocked ${e.blockedURI || "inline"}${e.sourceFile ? " (" + e.sourceFile.split("/").pop() + ":" + e.lineNumber + ")" : ""}`), true);
   for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
     Object.defineProperty(window, k, { value: function () { record("webrtc", [k], "WebRTC is not allowed"); throw new TypeError("WebRTC is not allowed"); } });
   }
-  window.__pfEmit = (name, json) => { for (const fn of handlers[name] || []) fn(json === undefined ? undefined : JSON.parse(json)); };
-  Object.defineProperty(window, "pf", { value: Object.freeze({
-    lang: "en", theme: "dark", settings: __SETTINGS__, fence: { id: "check", width: 320, height: 240 },
+  window.__pfEmit = (name, json) => {
+    const d = json === undefined ? null : JSON.parse(json);
+    if (name === "settings" || name === "theme") state[name] = d;
+    if (name === "resize") Object.assign(state.fence, d);
+    for (const fn of handlers[name] || []) try { fn(d); } catch (err) { window.__pfError(`in the ${name} handler: ${err && err.stack ? err.stack.split("\\n").slice(0, 2).join(" ") : err}`); }
+  };
+  const pf = {
     on: (name, fn) => { record("on", [name]); (handlers[name] = handlers[name] || []).push(fn); },
+    post: (d) => { const size = JSON.stringify(d === undefined ? null : d).length; record("post", [size], size > 1048576 ? "a message over 1 MB is dropped" : ""); },
     time: { now: () => call("time.now", [], null, Date.now()), format: (ms, kind) => call("time.format", [ms, kind], null, new Date(ms).toLocaleString()) },
     http: { get: (u, o) => call("http.get", [u, o], offline(u, P.network || [])), post: (u, o) => call("http.post", [u, o], offline(u, P.network || [])) },
-    data: { read: (n) => call("data.read", [n], null, data.has(n) ? data.get(n) : null), write: (n, t) => { data.set(n, String(t)); return call("data.write", [n, String(t).length]); },
-            list: () => call("data.list", [], null, [...data.keys()]), remove: (n) => { data.delete(n); return call("data.remove", [n]); } },
-    clipboard: { text: () => call("clipboard.text", [], needClip(2), "text on the clipboard"), files: () => call("clipboard.files", [], needClip(2), []),
-                 image: () => call("clipboard.image", [], needClip(2), null), setText: (t) => call("clipboard.setText", [String(t).length], needClip(1)),
-                 setFiles: (f) => call("clipboard.setFiles", [f], needClip(1)), setImage: (n) => call("clipboard.setImage", [n], needClip(1)) },
-    sys: { cpu: () => call("sys.cpu", [], null, 12.5), memory: () => call("sys.memory", [], null, { used: 6e9, total: 16e9 }),
-           drives: () => call("sys.drives", [], null, [{ name: "C:", used: 2e11, total: 5e11 }]), ip: () => call("sys.ip", [], null, "192.168.1.20"),
-           network: () => call("sys.network", [], null, { up: 1000, down: 20000 }), battery: () => call("sys.battery", [], null, { percent: 80, charging: true }) },
-    open: (u) => call("open", [u], needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links")),
+    data: { read: (n) => call("data.read", [n], null, data.has(n) ? data.get(n) : null),
+            write: (n, t) => { const text = typeof t === "string" ? t : JSON.stringify(t); data.set(n, text); return call("data.write", [n, text.length]); },
+            list: () => call("data.list", [], null, [...data.keys()].sort()), remove: (n) => { data.delete(n); return call("data.remove", [n]); } },
+    clipboard: { text: () => call("clipboard.text", [], needClip(2), { text: "text on the clipboard", truncated: false }),
+                 files: () => call("clipboard.files", [], needClip(2), null), image: (n) => call("clipboard.image", [n], needClip(2), null),
+                 setText: (t) => call("clipboard.setText", [String(t).length], needClip(1)), setFiles: (f) => call("clipboard.setFiles", [f], needClip(1)),
+                 setImage: (n) => call("clipboard.setImage", [n], needClip(1)) },
+    sys: { cpu: () => call("sys.cpu", [], null, 12), memory: () => call("sys.memory", [], null, 38),
+           drives: () => call("sys.drives", [], null, [{ letter: "C", free: 2e11, size: 5e11 }]), ip: () => call("sys.ip", [], null, "192.168.1.20"),
+           network: () => call("sys.network", [], null, [{ up: true, gateway: true, physical: true, addresses: ["192.168.1.20"] }]),
+           battery: () => call("sys.battery", [], null, { percent: 80, plugged: true }) },
+    open: (u) => call("open", [u], () => Date.now() - pressed > 1000 ? "pf.open works only right after a click in the fence"
+      : needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links")()),
     openSystem: (n) => call("openSystem", [n], () => n === "taskmgr" ? "" : `${n} is not a known system window`),
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
     folder: { pick: () => call("folder.pick", [], needFlag("folders"), null), list: (p) => call("folder.list", [p], needFlag("folders"), []), read: (p) => call("folder.read", [p], needFlag("folders"), "") },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),
-  }) });
+  };
+  for (const k of Object.keys(pf)) if (typeof pf[k] === "object") Object.freeze(pf[k]);
+  for (const k of ["lang", "theme", "settings", "fence"]) Object.defineProperty(pf, k, { get: () => state[k], enumerable: true });
+  Object.defineProperty(window, "pf", { value: Object.freeze(pf) });
 })();
 """
+
+
+def csp(network):
+    """The header PecoFence sends with each file (crates/app/src/web_plugin.rs, Plugin::csp)."""
+    connect = "".join(f" https://{h} wss://{h}" for h in network)
+    return f"default-src 'self'; connect-src 'self'{connect}; frame-src 'none'; form-action 'none'"
 
 
 def main():
@@ -87,11 +116,12 @@ def main():
         print("RESULT: PASS")
         return 0
     perms = m.get("permissions", {})
-    network = set(perms.get("network", []))
+    network = list(perms.get("network", []))
     settings = {s["key"]: s.get("default") for s in m.get("settings", [])}
     origin = f"https://{m['id']}.plugins.pecofence"
-    requests, sockets, calls, refused, errors = [], [], collections.Counter(), [], []
-    failures = []
+    header = csp(network)
+    requests, sockets, calls, refused, errors, blocked, missing = [], [], collections.Counter(), [], [], [], []
+    failures, notes = [], []
 
     def serve(route):
         url = urllib.parse.urlsplit(route.request.url)
@@ -101,8 +131,12 @@ def main():
                 path = root / "index.html"
             if root in path.parents and path.is_file():
                 kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-                return route.fulfill(status=200, body=path.read_bytes(), content_type=kind)
-            return route.fulfill(status=404, body=b"")
+                return route.fulfill(status=200, body=path.read_bytes(), content_type=kind,
+                                     headers={"Content-Security-Policy": header})
+            # The browser asks for a tab icon by itself; a plugin has none.
+            if url.path != "/favicon.ico":
+                missing.append(url.path)
+            return route.fulfill(status=404, body=b"", headers={"Content-Security-Policy": header})
         requests.append((time.monotonic(), url.hostname or url.scheme, route.request.resource_type, route.request.url))
         return route.abort("internetdisconnected")
 
@@ -110,6 +144,10 @@ def main():
         calls[name] += 1
         if why and not why.startswith("offline"):
             refused.append(f"{name}{json.loads(args_json)}: {why}")
+
+    def console(msg):
+        if msg.type == "error" and not msg.text.startswith("Failed to load resource") and "Content Security Policy" not in msg.text:
+            notes.append(msg.text[:200])
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -119,11 +157,14 @@ def main():
             context.route_web_socket("**", lambda ws: (sockets.append(ws.url), ws.close()))
         page = context.new_page()
         page.expose_function("__pfRecord", record)
+        page.expose_function("__pfCsp", lambda what: blocked.append(what))
+        page.expose_function("__pfError", lambda what: errors.append(what[:200]))
         stub = STUB.replace("__PERMS__", json.dumps(perms)).replace("__SETTINGS__", json.dumps(settings))
         page.add_init_script(stub)
         page.on("websocket", lambda ws: ws.url in sockets or sockets.append(ws.url))
-        page.on("pageerror", lambda e: errors.append(str(e).splitlines()[0]))
-        page.on("console", lambda msg: msg.type == "error" and not msg.text.startswith("Failed to load resource") and errors.append(msg.text[:200]))
+        # An uncaught error and a rejected Promise nobody catches both come here.
+        page.on("pageerror", lambda e: errors.append(str(e).splitlines()[0][:200]))
+        page.on("console", console)
         cdp = context.new_cdp_session(page)
         cdp.send("Performance.enable")
         begun = time.monotonic()
@@ -131,11 +172,14 @@ def main():
         if not answer or answer.status != 200:
             failures.append("index.html did not load")
         emit = lambda name, data=None: page.evaluate("([n, d]) => window.__pfEmit && window.__pfEmit(n, d)", [name, data])
-        emit("start")
-        steps = [(0.2, lambda: (page.set_viewport_size({"width": 480, "height": 300}),
-                                emit("resize", json.dumps({"width": 480, "height": 300})))),
+        # The events a page gets (AGENTS.md section 4), as a user's day brings them.
+        steps = [(0.15, lambda: (page.set_viewport_size({"width": 480, "height": 300}),
+                                 emit("resize", json.dumps({"width": 480, "height": 300})))),
+                 (0.2, lambda: emit("theme", json.dumps("light"))), (0.25, lambda: emit("theme", json.dumps("dark"))),
                  (0.3, lambda: emit("hide")), (0.45, lambda: emit("show")),
-                 (0.5, lambda: emit("settings", json.dumps(settings)))]
+                 (0.5, lambda: emit("settings", json.dumps(settings))), (0.55, lambda: emit("timechange"))]
+        if perms.get("clipboard") in ("read", "readwrite"):
+            steps.append((0.58, lambda: emit("clipboard")))
         rest = None
         for at, step in steps + [(0.6, None)]:
             page.wait_for_timeout(max(0, begun + at * args.seconds - time.monotonic()) * 1000)
@@ -148,7 +192,7 @@ def main():
             failures.append(f"the page went to {page.url}")
         browser.close()
 
-    print(f"PASS: ran {m['id']} {m.get('version')} for {args.seconds:.0f} s at {origin}/")
+    print(f"PASS: ran {m['id']} {m.get('version')} for {args.seconds:.0f} s at {origin}/ with PecoFence's CSP")
     by_host = collections.Counter(h for _, h, _, _ in requests)
     for host, n in sorted(by_host.items()):
         kinds = sorted({k for _, h, k, _ in requests if h == host})
@@ -165,8 +209,11 @@ def main():
             failures.append(f"a WebSocket to {host}, which permissions.network does not declare")
     print("INFO: pf calls: " + (", ".join(f"{k} {v}" for k, v in sorted(calls.items())) or "none"))
     failures += [f"refused: {r}" for r in refused]
-    for e in errors[:5]:
-        print(f"WARN: page error: {e}")
+    failures += [f"PecoFence's Content Security Policy blocks it (AGENTS.md section 4): {b}" for b in dict.fromkeys(blocked)]
+    failures += [f"an error nobody catches: {e}" for e in dict.fromkeys(errors)]
+    failures += [f"the plugin's own file {path} is not there" for path in dict.fromkeys(missing)]
+    for n in notes[:5]:
+        print(f"WARN: console error: {n}")
     heap = end.get("JSHeapUsedSize", 0) / 1e6
     span = time.monotonic() - rest[0] if rest else 0
     script = (end.get("ScriptDuration", 0) - rest[1].get("ScriptDuration", 0)) * 1000 / max(span, 0.001)
@@ -180,8 +227,8 @@ def main():
     if args.json:
         pathlib.Path(args.json).write_text(json.dumps({
             "requests": [{"host": h, "type": k, "url": u} for _, h, k, u in requests], "websockets": sockets,
-            "calls": calls, "refused": refused, "errors": errors, "heapMB": heap, "scriptMsPerSecond": script,
-            "failures": failures}, indent=1), encoding="utf-8")
+            "calls": calls, "refused": refused, "blocked": blocked, "errors": errors, "missing": missing,
+            "console": notes, "heapMB": heap, "scriptMsPerSecond": script, "failures": failures}, indent=1), encoding="utf-8")
     print("RESULT: FAIL" if failures else "RESULT: PASS")
     return 1 if failures else 0
 
