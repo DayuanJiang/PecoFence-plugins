@@ -88,6 +88,10 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   (a new host, reading or writing the clipboard where it did not before, another `layer`,
   `background`, `folders` or `notify` turned on, a new program) waits until the user agrees. So
   does an update whose `author` differs from the installed one; its warning names both.
+- In the first minute after an update, PecoFence goes back to the version before when the new
+  one stops (a limit, or an error in `main.js` itself), or when errors nobody catches (in a
+  handler, or in a web page) come 3 times; it stays on the version before until a newer one
+  comes. Catch what you expect to fail, such as a request while offline.
 
 ## 3. The light layer: `main.js`
 
@@ -337,7 +341,10 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   rejects its Promise; so does a call whose arguments are over 1 MB (a `RangeError`). `pf.open`
   works within 1 second after a mouse press in the fence.
 - Web plugins need WebView2 152 or newer (Windows updates it by itself); on an older one the
-  fence shows 「这个插件需要更新 WebView2。」 instead of the page.
+  fence shows 「这个插件需要更新 WebView2。」 instead of the page (PecoFence must be restarted
+  after the update).
+- When the page reloads itself (`location.reload()`), PecoFence makes the page anew: the new one
+  gets the current settings, theme and fence size, and the calls of the old one no longer count.
 - The page's background is transparent; the fence's glass shows through. Follow `pf.theme`.
 - Refused for every page: permission requests (camera, location, notifications, clipboard), other
   sites, new windows, downloads, other protocols, and WebRTC.
