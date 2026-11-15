@@ -1,5 +1,5 @@
 // Countdown: days left until the dates in this fence's setting "dates", nearest first. Dates that
-// have passed show how long ago they were. Entries are separated by ";" or new lines:
+// have passed show how long ago they were. Entries are separated by ";" (or "；") or new lines:
 // "2026-12-25 Christmas" for one day, "12-25 Christmas" for the same day every year.
 
 const TEXTS = {
@@ -43,7 +43,7 @@ function parse(entry, today) {
 
 function rows() {
   const today = new Date(pf.time.now());
-  const entries = String(pf.settings.dates || "").split(/[;\n]/).map((s) => s.trim()).filter(Boolean);
+  const entries = String(pf.settings.dates || "").split(/[;；\n]/).map((s) => s.trim()).filter(Boolean);
   const items = entries.map((e) => parse(e, today));
   const upcoming = items.filter((i) => i.days >= 0).sort((a, b) => a.days - b.days);
   const past = pf.settings.past ? items.filter((i) => i.days < 0).sort((a, b) => b.days - a.days) : [];
