@@ -132,7 +132,7 @@ thread:
 | `pf.clipboard.files()` | the same | an array of the full paths of copied files (as File Explorer copies them), or `null` |
 | `pf.clipboard.image(name)` | the same; `name` a data name, or nothing | the name of the PNG it saved in the data files (`clipboard-<ms>.png` without `name`), or `null` when the clipboard holds no picture |
 | `pf.clipboard.setText(text)` | `clipboard` `write` or `readwrite` | `null` |
-| `pf.clipboard.setFiles(paths)` | the same | `null`: the files are on the clipboard as File Explorer copies them |
+| `pf.clipboard.setFiles(paths)` | the same; with `write` alone, every path inside a folder the user picked (`pf.folder.pick`) or the plugin's data folder | `null`: the files are on the clipboard as File Explorer copies them |
 | `pf.clipboard.setImage(name)` | the same; `name` a data name | `null`: the picture in that data file (PNG, JPEG and the other formats Windows reads) is on the clipboard |
 | `pf.sys.cpu()` | | the processor's load in percent (a whole number, 0 to 100) since the last `sys.cpu` call of any plugin (the first call measures 250 ms), or `null` |
 | `pf.sys.memory()` | | the physical memory in use in percent (a whole number, as Task Manager counts it), or `null` |
@@ -142,7 +142,7 @@ thread:
 | `pf.sys.battery()` | | `{ percent, plugged }`, or `null` on a computer without a battery |
 | `pf.open(url)` | an `http` or `https` address whose host is in `network` or `links`, called while a `click` or `dblclick` handler runs | `null`: the page opens in the browser |
 | `pf.openSystem("taskmgr")` | the name `taskmgr` (the only one for now) | `null`: Task Manager opens |
-| `pf.run(program, args)` | `program` in `system`, and 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB |
+| `pf.run(program, args)` | `program` in `system`, and 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB. Programs it starts end with it, or at the 30 seconds limit |
 | `pf.folder.pick()` | `folders` | the path of the folder the user picked (PecoFence remembers it for this fence), or `null` when they cancelled |
 | `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `[{ name, path, folder, size, modified }]`, at most 10,000: `folder` is `true` for a folder, `modified` is in ms since 1970 |
 | `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
@@ -170,12 +170,13 @@ busy`, the data folder past 200 MB, a picture larger than 4096 × 4096 pixels, `
 允许插件使用 Windows 底层功能 ...` while the switch is off, a program that ran longer than 30
 seconds (it is ended), a path outside the picked folders.
 
-**Addresses are read strictly.** After `https://` (for `pf.open` also `http://`) comes the host,
-an optional `:port`, then `/`, `?`, `#` or the end. The host is letters, digits, `.` and `-` (an
-international name in its `xn--` form); capitals are read as small letters. An address with a user
-name (`@`), a backslash, a space or a control character before its path is refused, even when the
-host after it is declared, and a redirect to such an address rejects with `redirect refused`.
-PecoFence requests or opens exactly the address it checked.
+**Addresses are read strictly.** An address starts with `https://` in small letters (for
+`pf.open` also `http://`), then the host, an optional `:port` (1 to 65535), then `/`, `?`, `#` or
+the end. The host is letters, digits, `.` and `-`, without empty parts (`a..b`), an international
+name in its `xn--` form; capitals are read as small letters and a dot at the end is dropped. An
+address with a control character anywhere in it, or with a user name (`@`), a backslash or a space
+before its path, is refused, even when the host after it is declared, and a redirect to such an
+address rejects with `redirect refused`. PecoFence requests or opens exactly the address it checked.
 
 **Requests.** PecoFence follows redirects (301, 302, 303, 307, 308) one hop at a time, at most 5,
 and checks each new host against `network`. A 303, and a 301 or 302 answering a `post`, goes on
@@ -206,18 +207,22 @@ before the handler's first `await`.
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
 PecoFence writes it to its log (the plugin, the event, the message and the first line of the
-stack) and the plugin goes on: its timers keep running and the next events come. Only an error in
-the top level of `main.js`, while the script first runs, stops the plugin as a limit does
-(section 3.4), and the fence shows the error. Catch the errors you expect: a handler that fails
-each time leaves its fence without the update it was making. A Promise that rejects with nobody
-to catch it is left alone.
+stack) and the plugin goes on: its timers keep running and the next events come. A Promise that
+rejects with nobody to catch it (an `async` handler that throws after an `await`, a `pf` call
+without `catch`) is logged the same way. Only an error in the top level of `main.js`, while the
+script first runs, stops the plugin as a limit does (section 3.4), and the fence shows the error;
+a limit reached inside an `async` function stops it too. Catch the errors you expect: the run
+check (section 8) fails a plugin for every error that escapes, and a handler that fails each time
+leaves its fence without the update it was making.
 
 ### 3.3 The view
 
 `pf.show({ rows: [...] })`: rows from the top, at most 300 (the rest are dropped). All text is
-plain text, at most 4,096 characters a text (longer text is cut). **A row with a field of the
-wrong type is left out** and the other rows show: an `id` is text (`"item:5"`, not `5`), `bold`
-is `true` or `false` (not `null`).
+plain text, at most 4,096 characters a text (longer text is cut). **A field of the wrong type
+is left out** and the rest of the row shows, also inside cells, spans and drawing steps (a cell or
+span that is not an object is left out whole); PecoFence's log names each such field once. An `id`
+is text (`"item:5"`, not `5`), `bold` is `true` or `false` (not `null`): a row whose `id` is left
+out is no longer clickable.
 
 | Field | Meaning |
 |---|---|
@@ -296,7 +301,8 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   plugin writes itself does not count.
 - Before the page's scripts run, PecoFence puts the same `pf` into the page (`window.pf`), with the
   same names and rules as section 3.1, except that every call returns a Promise and `pf.show` is
-  not there. `pf.open` works within 1 second after a mouse press in the fence.
+  not there. A call refused there, also one past the 4 requests and 16 calls a plugin may have
+  under way, rejects its Promise. `pf.open` works within 1 second after a mouse press in the fence.
 - The page's background is transparent; the fence's glass shows through. Follow `pf.theme`.
 - Refused for every page: permission requests (camera, location, notifications, clipboard), other
   sites, new windows, downloads, other protocols, and WebRTC.
@@ -304,7 +310,9 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   `background`). Stop animations on `hide`.
 - An optional `main.js` runs in the light layer next to the page, with section 3's `pf`. The
   two pass messages: `pf.post(data)` on one side (JSON, at most 1 MB) is a `message` event
-  with `data` on the other.
+  with `data` on the other. In `main.js`, `pf.post` throws a `RangeError` for a message over 1 MB,
+  or when one run (an event, a timer or an answer) would send more than 100 messages or 4 MB; a
+  page's message over 1 MB is dropped and its call gets no answer.
 - The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message` and
   `theme` (`light` or `dark`); `pf.theme`, `pf.settings` and `pf.fence` follow them.
 
