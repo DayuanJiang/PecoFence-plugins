@@ -28,6 +28,11 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 - `<id>`: lower-case letters, digits and `-`, 3 to 40 characters, never changed after it is merged.
 - Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 200 KB, any other file at
   most 1 MB, the whole folder at most 5 MB and 100 files.
+- The automatic review (section 9) reads at most 200 KB of text: the `.json`, `.js`, `.html`,
+  `.css`, `.svg` and `.md` files of the new version and, for an update, of the version before,
+  together (pictures and fonts do not count). A pull request over that is not reviewed and not
+  merged. Keep the text small: no copied libraries, no long tables of data or generated code.
+  An update counts both versions, so keep a plugin you mean to update under about 100 KB of text.
 - File and folder names: small letters, digits, `.`, `_` and `-` (only `README.md` has
   capitals), at most 64 characters, not starting or ending with a dot, and not a name Windows
   keeps for a device (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`, also with
