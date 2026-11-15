@@ -7,6 +7,7 @@ WARN lines do not fail the check; the review reads them.
 """
 import argparse
 import json
+import math
 import pathlib
 import re
 import subprocess
@@ -26,11 +27,10 @@ TEXT_EXT = {".html", ".js", ".css", ".json", ".svg", ".md"}
 CODE_EXT = {".html", ".js", ".css", ".svg"}
 MAGIC = {".png": b"\x89PNG\r\n\x1a\n", ".jpg": b"\xff\xd8\xff", ".jpeg": b"\xff\xd8\xff",
          ".gif": b"GIF8", ".webp": b"RIFF", ".woff2": b"wOF2"}
-VERSION = re.compile(r"^\d+\.\d+\.\d+$")
-LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
+LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}")
 # AGENTS.md section 1: a file or folder name, as PecoFence checks it (no Windows device names).
-NAME = re.compile(r"(?i)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)")
-HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$")
+NAME = re.compile(r"(?ia)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)")
+HOST = re.compile(r"(?=.{1,253}\Z)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]")
 # XML namespaces name this host without connecting to it.
 NAMESPACE_HOSTS = {"www.w3.org"}
 
@@ -99,6 +99,35 @@ def finish():
 
 def version(v):
     return tuple(int(x) for x in v.split("."))
+
+
+def version_ok(v):
+    """x.y.z in ASCII digits, each a number PecoFence can hold (64 bits)."""
+    return isinstance(v, str) and bool(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", v)) and max(version(v)) < 1 << 64
+
+
+def no_twice(pairs):
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError(f"the field '{next(k for k in keys if keys.count(k) > 1)}' is there twice")
+    return dict(pairs)
+
+
+def finite(text):
+    if not math.isfinite(float(text)):
+        raise ValueError(f"the number {text[:20]} is out of range")
+    return int(text) if text.lstrip("-").isdigit() else float(text)
+
+
+def read_json(data):
+    """JSON as PecoFence reads it: no field twice, no NaN or Infinity, no number out of range and
+    no lone surrogate in a text."""
+    def constant(name):
+        raise ValueError(f"{name} is not JSON")
+    value = json.loads(data.decode("utf-8-sig"), object_pairs_hook=no_twice, parse_constant=constant,
+                       parse_float=finite, parse_int=finite)
+    json.dumps(value, ensure_ascii=False).encode("utf-8")
+    return value
 
 
 def texts_ok(value, field, max_len):
@@ -171,7 +200,7 @@ def check_hosts(hosts, field):
         fail(f"permissions.{field} is a list of host names")
         return []
     for h in hosts:
-        if not HOST.match(h) or h == "localhost" or re.fullmatch(r"[\d.]+", h):
+        if not HOST.fullmatch(h) or h == "localhost" or re.fullmatch(r"[\d.]+", h):
             fail(f"permissions.{field}: '{h}' is not a host name in lower case (no IP addresses, no localhost)")
     if len(hosts) > 20 or len(set(hosts)) != len(hosts):
         fail(f"permissions.{field}: at most 20 hosts, each once")
@@ -187,15 +216,15 @@ def check_manifest(m, pid):
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{2,39}", pid):
         fail(f"'{pid}' is not a valid id (a-z, 0-9 and -, 3 to 40 characters)")
     for key in ("version", "minPecoFence"):
-        if not VERSION.match(str(m.get(key, ""))):
-            fail(f"{key} '{m.get(key)}' is not x.y.z")
-    if m.get("api") != API:
+        if not version_ok(m.get(key)):
+            fail(f"{key} {m.get(key)!r} is not x.y.z")
+    if type(m.get("api")) is not int or m["api"] != API:
         fail(f"api is {m.get('api')!r}; this repository knows api {API}")
     if m.get("layer") not in ("light", "web"):
         fail(f"layer is {m.get('layer')!r}, not light or web")
     texts_ok(m.get("name"), "name", 60)
     texts_ok(m.get("description"), "description", 300)
-    if not LOGIN.match(str(m.get("author", ""))):
+    if not isinstance(m.get("author"), str) or not LOGIN.fullmatch(m["author"]):
         fail(f"author '{m.get('author')}' is not a GitHub login")
     p = m.get("permissions", {})
     if not isinstance(p, dict):
@@ -211,13 +240,13 @@ def check_manifest(m, pid):
         if not isinstance(p.get(key, False), bool):
             fail(f"permissions.{key} is true or false")
     system = p.get("system", [])
-    # As PecoFence reads it: 5 to 260 characters ending in .exe, a name in System32 or a full path
-    # whose parts are not empty and not "..", without control characters.
+    # As PecoFence reads it: 5 to 260 bytes (UTF-8) ending in .exe, a name in System32 or a full
+    # path whose parts are not empty and not "..", without control characters.
     if not isinstance(system, list) or len(system) > 20 or not all(
-            isinstance(s, str) and 5 <= len(s) <= 260
-            and (re.fullmatch(r"[A-Za-z]:\\[^/:*?\"<>|\x00-\x1f]+\.exe", s, re.I)
+            isinstance(s, str) and 5 <= len(s.encode()) <= 260
+            and (re.fullmatch(r"[A-Za-z]:\\[^/:*?\"<>|\x00-\x1f]+\.exe", s, re.I | re.A)
                  and not any(part in ("", "..") for part in s[3:].split("\\"))
-                 or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I)) for s in system):
+                 or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I | re.A)) for s in system):
         fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
              "no empty part and no '..') or a name in System32 (x.exe)")
     settings = m.get("settings", [])
@@ -237,17 +266,20 @@ def check_manifest(m, pid):
         if kind not in SETTING_TYPES:
             fail(f"{where}.type is one of {', '.join(sorted(SETTING_TYPES))}")
         texts_ok(s.get("label"), f"{where}.label", 60)
-        values = [o.get("value") for o in s.get("options", []) if isinstance(o, dict)]
-        if kind == "choice":
-            if not 1 <= len(values) <= 50 or not all(isinstance(v, str) for v in values):
-                fail(f"{where}: a choice has 1 to 50 options [{{ value, label }}]")
-            for o in s.get("options", []):
-                texts_ok(o.get("label") if isinstance(o, dict) else None, f"{where}.options.label", 60)
-        good = {"switch": isinstance(default, bool), "text": isinstance(default, str),
+        # PecoFence reads the options of every type: each with a text value and short labels.
+        options = s.get("options", [])
+        if not isinstance(options, list) or not all(isinstance(o, dict) and isinstance(o.get("value"), str) for o in options) \
+                or kind == "choice" and not 1 <= len(options) <= 50:
+            fail(f"{where}.options is a list of {{ value, label }} (a choice has 1 to 50)")
+            options = []
+        for o in options:
+            texts_ok(o.get("label"), f"{where}.options.label", 60)
+        values = [o["value"] for o in options]
+        good = {"switch": isinstance(default, bool), "text": isinstance(default, str) and len(default) <= 4000,
                 "number": isinstance(default, (int, float)) and not isinstance(default, bool),
                 "choice": default in values}
         if kind in good and not good[kind]:
-            fail(f"{where}.default does not fit its type {kind}")
+            fail(f"{where}.default does not fit its type {kind} (a text has at most 4000 characters)")
     return p
 
 
@@ -259,7 +291,7 @@ def check_update(m, pid, base, pr_author):
             fail(f"a new plugin comes from its author: plugin.json says {m.get('author')}, the pull request is by {pr_author}")
         return
     old = json.loads(old.stdout.decode("utf-8-sig"))
-    if not VERSION.match(str(m.get("version", ""))) or version(m["version"]) <= version(old["version"]):
+    if not version_ok(m.get("version")) or version(m["version"]) <= version(old["version"]):
         fail(f"version {m.get('version')} must be higher than {old['version']}")
     if m.get("author") != old["author"]:
         fail(f"author changed from {old['author']} to {m.get('author')}")
@@ -350,7 +382,7 @@ def main():
     root = pathlib.Path(args.plugin).resolve()
     pid = root.name
     try:
-        m = json.loads((root / "plugin.json").read_bytes().decode("utf-8-sig"))
+        m = read_json((root / "plugin.json").read_bytes())
         if not isinstance(m, dict):
             raise ValueError("not an object")
     except (OSError, ValueError) as e:

@@ -26,6 +26,8 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# The most bytes of index.json PecoFence reads (MAX_INDEX in PecoFence's crates/core/src/plugins.rs).
+MAX_INDEX = 1024 * 1024
 FIELDS = ["id", "version", "api", "layer", "name", "description", "author", "minPecoFence",
           "permissions", "settings"]
 
@@ -42,7 +44,7 @@ def entry(folder, disabled):
         # trailing dot, no Windows device name, at most 200 characters, and no two that differ
         # only in case (PecoFence drops an entry with such a file).
         if len(name) > 200 or not all(
-                re.fullmatch(r"(?i)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)", part)
+                re.fullmatch(r"(?ia)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)", part)
                 for part in name.split("/")):
             raise ValueError(f"the file name {name!r} is not allowed")
         if any(f["name"].lower() == name.lower() for f in files):
@@ -84,22 +86,35 @@ def main():
         serial = int(git("rev-list", "--count", commit))
     disabled = json.loads((ROOT / "disabled.json").read_text(encoding="utf-8")) if (ROOT / "disabled.json").exists() else {}
     folders = [pathlib.Path(p).resolve() for p in args.plugin] or sorted(p for p in (ROOT / "plugins").iterdir() if p.is_dir())
-    # A folder that cannot be an entry is left out with a warning; the others are published.
+    # A folder that cannot be an entry is left out with a warning; the others are published. A
+    # plugin taken down in disabled.json is never left out: its entry carries the take-down.
     good, plugins = [], []
     for f in folders:
         try:
             plugins.append(entry(f, disabled))
             good.append(f)
         except (OSError, ValueError, KeyError) as e:
+            if f.name in disabled:
+                sys.exit(f"::error::{f.name} is taken down in disabled.json, but its folder cannot be listed ({e}): "
+                         "the index would lose the take-down, so nothing is published. Repair the folder.")
             print(f"::warning::{f.name} left out of index.json: {e}", file=sys.stderr)
     folders = good
+    lost = [] if args.plugin else sorted(set(disabled) - {e["id"] for e in plugins})
+    if lost:
+        sys.exit(f"::error::disabled.json takes down {', '.join(lost)}, which has no plugin folder: the index would "
+                 "lose the take-down, so nothing is published.")
     data = (json.dumps({"format": 1, "serial": serial, "commit": commit, "plugins": plugins}, ensure_ascii=False, indent=1) + "\n").encode()
+    if len(data) > MAX_INDEX:
+        sys.exit(f"::error::index.json would be {len(data)} bytes, more than the {MAX_INDEX} PecoFence reads (MAX_INDEX "
+                 "in PecoFence's crates/core/src/plugins.rs), so nothing is published: PecoFence would refuse it. "
+                 "Raise MAX_INDEX in PecoFence first, or make the entries shorter.")
 
     out = pathlib.Path(args.out)
     if out.exists() and any(out.iterdir()):
         if not (out / "index.json").exists():
             sys.exit(f"{out} is not empty and holds no index.json: give a new folder")
         shutil.rmtree(out)
+    out.mkdir(parents=True, exist_ok=True)
     for folder, e in zip(folders, plugins):
         shutil.copytree(folder, out / commit / "plugins" / e["id"])
     (out / "index.json").write_bytes(data)
