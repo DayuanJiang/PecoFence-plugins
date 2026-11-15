@@ -71,12 +71,8 @@ jobs:
           repository: DayuanJiang/PecoFence
           ref: ${{ env.PECOFENCE_COMMIT }}
           path: pecofence
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            pecofence/target
-          key: plugin-check-${{ env.PECOFENCE_COMMIT }}
+      # Built anew on every run, never restored from a cache: a cache saved by an earlier run of
+      # a pull request (one that changed this file, say) could hold a checker of its own making.
       - name: Build pecofence-plugin-check
         env:
           # A quick build: the release profile's whole-program optimisation is for the app.
