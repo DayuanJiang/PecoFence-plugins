@@ -36,7 +36,10 @@ function RunKeys {
 function Tasks { @(Get-ScheduledTask -ErrorAction SilentlyContinue | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) }
 function Services { @(Get-Service -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }) }
 $watchRoots = @($env:USERPROFILE)
+# Folders Windows' own background components write to at any time (certificate caches, app
+# packages); a plugin writing there is caught by the review reading its code instead.
 $skip = @($work, [IO.Path]::GetTempPath(), (Join-Path $env:LOCALAPPDATA 'Microsoft'), (Join-Path $env:LOCALAPPDATA 'Temp'),
+          (Join-Path $env:LOCALAPPDATA 'Packages'), (Join-Path $env:USERPROFILE 'AppData\LocalLow\Microsoft'),
           (Join-Path $env:APPDATA 'Microsoft'), $PWD.Path) | ForEach-Object { $_.TrimEnd('\') + '\' }
 function Files {
     $map = @{}
