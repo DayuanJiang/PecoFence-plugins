@@ -28,9 +28,12 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 - `<id>`: lower-case letters, digits and `-`, 3 to 40 characters, never changed after it is merged.
 - Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 200 KB, any other file at
   most 1 MB, the whole folder at most 5 MB and 100 files.
-- File and folder names: letters, digits, `.`, `_` and `-`, at most 64 characters, not starting
-  or ending with a dot, and not a name Windows keeps for a device (`con`, `prn`, `aux`, `nul`,
-  `com1` to `com9`, `lpt1` to `lpt9`, also with an extension such as `aux.js`).
+- File and folder names: small letters, digits, `.`, `_` and `-` (only `README.md` has
+  capitals), at most 64 characters, not starting or ending with a dot, and not a name Windows
+  keeps for a device (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`, also with
+  an extension such as `aux.js`). A file's path inside the folder (`img/icon.png`) has at most
+  200 characters. Windows does not tell `A.js` from `a.js`: PecoFence drops a plugin with two
+  names that differ only in case.
 - Text files are UTF-8. A web plugin's files have these extensions only: `.html`, `.js`, `.css`,
   `.json`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.woff2`. Nothing else: no programs,
   libraries in binary form, archives or WebAssembly.
@@ -68,12 +71,12 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   | `links` | more host names `pf.open` may open in the browser (hosts in `network` may be opened too) |
   | `clipboard` | `none`, `write` (only puts things on the clipboard, such as a copied IP address), `read`, or `readwrite` |
   | `background` | `true` keeps the plugin running while its fence is hidden (a clipboard history needs it) |
-  | `system` | programs `pf.run` may start: full paths, or names of programs in `C:\Windows\System32`. Works only when the user turns on 允许插件使用 Windows 底层功能, and every update asks the user again |
+  | `system` | programs `pf.run` may start, at most 20, each ending in `.exe`: a full path (`C:\Tools\tool.exe`, no empty part and no `..`), or the name of a program in `C:\Windows\System32` (`ipconfig.exe`). Works only when the user turns on 允许插件使用 Windows 底层功能, and every update asks the user again |
   | `folders` | the plugin may ask the user to pick a folder and read it (read-only) |
   | `notify` | the plugin may show a notice card and play a sound |
 
 - `settings`: what the fence menu's 插件设置 offers, at most 20. Each has a `key` (letters and
-  digits), a `type` (`text`, `number`, `switch`, or `choice` with `options`:
+  digits), a `type` (`text`, `number`, `switch`, or `choice` with 1 to 50 `options`:
   `[{ "value": "c", "label": { "en": "Celsius" } }]`), a `label` with `en`, and a `default` of
   that type. Each fence of the plugin keeps its own settings.
 - Users see the permissions in plain words before they install. An update that asks for more

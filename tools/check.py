@@ -114,7 +114,7 @@ def texts_ok(value, field, max_len):
 
 def check_files(root, layer):
     """AGENTS.md section 1: the folder's files, their names, sizes and encoding."""
-    files, total = {}, 0
+    files, total, lower = {}, 0, set()
     for path in sorted(root.rglob("*")):
         rel = path.relative_to(root).as_posix()
         if path.is_symlink():
@@ -125,7 +125,16 @@ def check_files(root, layer):
         elif not all(NAME.fullmatch(part) for part in rel.split("/")):
             fail(f"{rel}: names are letters, digits, '.', '_' and '-', not starting or ending with a dot, "
                  "and no Windows device name (con, prn, aux, nul, com1 to com9, lpt1 to lpt9)")
+        # Small letters: the review and the checks on Linux read app.JS as another file than
+        # Windows does, and PecoFence drops a plugin with two names that differ only in case.
+        elif rel != rel.lower() and rel != "README.md":
+            fail(f"{rel}: file and folder names are in small letters (only README.md has capitals)")
+        elif rel.lower() in lower:
+            fail(f"{rel}: another file's name differs from it only in case")
+        elif len(rel) > 200:
+            fail(f"{rel}: a file's path in the folder has at most 200 characters")
         else:
+            lower.add(rel.lower())
             files[rel] = path.read_bytes()
             total += len(files[rel])
     light = {"plugin.json", "main.js", "README.md", "screenshot.png"}
@@ -202,10 +211,15 @@ def check_manifest(m, pid):
         if not isinstance(p.get(key, False), bool):
             fail(f"permissions.{key} is true or false")
     system = p.get("system", [])
-    if not isinstance(system, list) or not all(
-            isinstance(s, str) and (re.fullmatch(r"[A-Za-z]:\\[^/:*?\"<>|]+\.exe", s, re.I)
-                                    or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I)) for s in system):
-        fail("permissions.system is a list of programs: a full path (C:\\...\\x.exe) or a name in System32 (x.exe)")
+    # As PecoFence reads it: 5 to 260 characters ending in .exe, a name in System32 or a full path
+    # whose parts are not empty and not "..", without control characters.
+    if not isinstance(system, list) or len(system) > 20 or not all(
+            isinstance(s, str) and 5 <= len(s) <= 260
+            and (re.fullmatch(r"[A-Za-z]:\\[^/:*?\"<>|\x00-\x1f]+\.exe", s, re.I)
+                 and not any(part in ("", "..") for part in s[3:].split("\\"))
+                 or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I)) for s in system):
+        fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
+             "no empty part and no '..') or a name in System32 (x.exe)")
     settings = m.get("settings", [])
     if not isinstance(settings, list) or len(settings) > 20:
         fail("settings is a list of at most 20")
@@ -225,8 +239,8 @@ def check_manifest(m, pid):
         texts_ok(s.get("label"), f"{where}.label", 60)
         values = [o.get("value") for o in s.get("options", []) if isinstance(o, dict)]
         if kind == "choice":
-            if not values or not all(isinstance(v, str) for v in values):
-                fail(f"{where}: a choice has options [{{ value, label }}]")
+            if not 1 <= len(values) <= 50 or not all(isinstance(v, str) for v in values):
+                fail(f"{where}: a choice has 1 to 50 options [{{ value, label }}]")
             for o in s.get("options", []):
                 texts_ok(o.get("label") if isinstance(o, dict) else None, f"{where}.options.label", 60)
         good = {"switch": isinstance(default, bool), "text": isinstance(default, str),

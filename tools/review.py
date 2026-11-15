@@ -111,7 +111,7 @@ def main():
     size = 0
     new, old = plugin_files(pid, head), set(plugin_files(pid, base))
     for path in new + sorted(old - set(new)):
-        if not path.endswith(TEXT_EXT):
+        if not path.lower().endswith(TEXT_EXT):
             parts.append(f'<file path="{path}" version="{"new" if path in new else "old"}">(a picture or font, not shown)</file>')
             continue
         for label, ref in (("new", head), ("old", base)):
