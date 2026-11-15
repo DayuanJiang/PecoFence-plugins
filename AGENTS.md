@@ -77,8 +77,8 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   `[{ "value": "c", "label": { "en": "Celsius" } }]`), a `label` with `en`, and a `default` of
   that type. Each fence of the plugin keeps its own settings.
 - Users see the permissions in plain words before they install. An update that asks for more
-  (a new host, a higher clipboard level, `background`, `folders` or `notify` turned on, a new
-  program) waits until the user agrees.
+  (a new host, reading or writing the clipboard where it did not before, another `layer`,
+  `background`, `folders` or `notify` turned on, a new program) waits until the user agrees.
 
 ## 3. The light layer: `main.js`
 

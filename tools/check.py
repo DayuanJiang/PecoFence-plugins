@@ -254,8 +254,12 @@ def check_update(m, pid, base, pr_author):
     o, n = old.get("permissions", {}), m.get("permissions", {})
     more = [f"{k}: {sorted(set(n.get(k, [])) - set(o.get(k, [])))}" for k in ("network", "links", "system")
             if set(n.get(k, [])) - set(o.get(k, []))]
-    if CLIPBOARD.index(n.get("clipboard", "none")) > CLIPBOARD.index(o.get("clipboard", "none")):
-        more.append(f"clipboard {o.get('clipboard', 'none')} to {n['clipboard']}")
+    # Reading and writing are separate rights: read to write is new too, as PecoFence counts it.
+    oc, nc = o.get("clipboard", "none"), n.get("clipboard", "none")
+    if any(right in nc and right not in oc for right in ("read", "write")):
+        more.append(f"clipboard {oc} to {nc}")
+    if m.get("layer") != old.get("layer"):
+        more.append(f"layer {old.get('layer')} to {m.get('layer')}")
     more += [f"{k} turned on" for k in ("background", "folders", "notify") if n.get(k) and not o.get(k)]
     if more:
         warn(f"this update asks for more ({'; '.join(more)}): users confirm it before it installs")
