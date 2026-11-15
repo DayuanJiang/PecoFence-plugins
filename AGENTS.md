@@ -95,8 +95,9 @@ Read it. The points agents get wrong:
 
 1. **Readable code only.** Plain PowerShell that a reader can follow. No obfuscated, encoded or
    compressed code, no code assembled at run time and executed, no downloading code or programs to
-   run them. Inline C# with `Add-Type -TypeDefinition` is allowed when its source is written out in
-   `main.ps1` and only calls Windows APIs the plugin's purpose needs.
+   run them. Declaring the Windows API functions the plugin's purpose needs is allowed when the
+   declaration is written out in `main.ps1`: inline C# with `Add-Type -TypeDefinition`, or
+   `DefinePInvokeMethod` on a dynamic assembly, naming the DLL and the function.
 2. **Only what the manifest declares:** network hosts, clipboard use, file writes, rows that start
    programs.
 3. **Leave the system alone.** No changes to autostart, scheduled tasks, services, firewall,
