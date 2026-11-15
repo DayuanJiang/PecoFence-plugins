@@ -353,7 +353,9 @@ weather every 30 minutes, a computer's state every 2 to 5 seconds.
    ```
 
 4. Settings › 小工具 lists your plugin: install it. After a change, run step 2 again with a higher
-   `version`; the test instance updates it.
+   `version`; the test instance updates it. The feed's `serial` is the number of commits in your
+   clone (a shallow clone needs `--serial <n>`); the test instance refuses a feed with a lower
+   serial than the last one it read, so after a reset of your branch give `--serial` a higher one.
 5. Look at it in the light and dark theme, in a narrow (300 px) and a wide fence, in English and
    Chinese.
 
@@ -391,4 +393,6 @@ manifest entry that allows it.
 
 Report a plugin that breaks these rules with the *Report a plugin* issue form. A plugin found to
 break a hard rule is listed in `disabled.json`; it then shows as disabled in the list, and
-PecoFence turns it off.
+PecoFence turns it off. The signed `index.json` carries a `serial`, the number of commits on
+`main`; PecoFence refuses an index with a lower serial than one it already read, so an old copy
+served again cannot bring a disabled plugin back.

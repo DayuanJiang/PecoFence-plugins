@@ -3,14 +3,16 @@
 
 index.json lists every plugin with its manifest and, for each file, its size and SHA-256. Files
 are fetched from the commit the index names, so only the reviewed version installs. A plugin named
-in disabled.json is listed with "disabled" and its reason; PecoFence turns it off.
+in disabled.json is listed with "disabled" and its reason; PecoFence turns it off. "serial" is the
+number of commits on main up to that commit: it only grows, and PecoFence refuses an index with a
+lower serial than one it saw (an old signed index served again would bring back a removed take-down).
 
 The output folder holds index.json, index.json.sig (Ed25519 over the exact bytes of index.json,
 128 hex digits, when INDEX_SIGNING_KEY holds the private key's 64 hex digits) and
 <commit>/plugins/<id>/<files>, the layout of the project website's copy and of a local test feed.
 
 Usage:
-  python3 tools/build-index.py --out <dir> [--commit <sha>] [--require-signature]
+  python3 tools/build-index.py --out <dir> [--commit <sha>] [--serial <n>] [--require-signature]
   python3 tools/build-index.py --out C:\\pf-feed --plugin plugins/my-plugin   (a local test feed)
 """
 import argparse
@@ -59,14 +61,22 @@ def main():
     ap.add_argument("--out", required=True, help="the folder to write")
     ap.add_argument("--commit", help="the reviewed commit (default: git HEAD)")
     ap.add_argument("--plugin", action="append", default=[], help="only this plugin folder (repeatable)")
+    ap.add_argument("--serial", type=int, help="the serial (default: the count of commits up to --commit)")
     ap.add_argument("--require-signature", action="store_true", help="fail without INDEX_SIGNING_KEY")
     args = ap.parse_args()
-    commit = args.commit or subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True,
-                                           text=True, check=True).stdout.strip()
+    git = lambda *a: subprocess.run(["git", "-C", str(ROOT), *a], capture_output=True, text=True,
+                                    check=True).stdout.strip()
+    commit = args.commit or git("rev-parse", "HEAD")
+    serial = args.serial
+    if serial is None:
+        # A shallow clone counts only the commits it has, which would put the serial back.
+        if git("rev-parse", "--is-shallow-repository") == "true":
+            sys.exit("a shallow clone: the serial needs the whole history (fetch-depth: 0) or --serial")
+        serial = int(git("rev-list", "--count", commit))
     disabled = json.loads((ROOT / "disabled.json").read_text(encoding="utf-8")) if (ROOT / "disabled.json").exists() else {}
     folders = [pathlib.Path(p).resolve() for p in args.plugin] or sorted(p for p in (ROOT / "plugins").iterdir() if p.is_dir())
     plugins = [entry(f, disabled) for f in folders]
-    data = (json.dumps({"format": 1, "commit": commit, "plugins": plugins}, ensure_ascii=False, indent=1) + "\n").encode()
+    data = (json.dumps({"format": 1, "serial": serial, "commit": commit, "plugins": plugins}, ensure_ascii=False, indent=1) + "\n").encode()
 
     out = pathlib.Path(args.out)
     if out.exists() and any(out.iterdir()):
@@ -81,7 +91,7 @@ def main():
         (out / "index.json.sig").write_text(signature, encoding="ascii")
     elif args.require_signature:
         sys.exit("INDEX_SIGNING_KEY is not set: no signature (make one with tools/make-key.py)")
-    print(f"index.json: {len(plugins)} plugins at {commit}, {'signed' if signature else 'not signed'}, in {out}")
+    print(f"index.json: {len(plugins)} plugins at {commit}, serial {serial}, {'signed' if signature else 'not signed'}, in {out}")
 
 
 if __name__ == "__main__":
