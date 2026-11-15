@@ -3,11 +3,15 @@
 // with the fence and takes the short forms when it is narrow.
 let timer = 0;
 
+// Hours and minutes alone, as PecoFence's clock writes them when it is narrow: "8:47" for
+// "8:47 AM" or "上午 8:47".
+const plain = (time) => (/\d{1,2}[^\d\s]\d{2}/.exec(time) || [time])[0];
+
 function draw() {
   const now = pf.time.now();
   const f = (kind) => pf.time.format(now, kind);
   pf.show({ rows: [
-    { text: f(pf.settings.seconds ? "seconds" : "time"), short: f("time"), size: "fit" },
+    { text: f(pf.settings.seconds ? "seconds" : "time"), short: plain(f("time")), size: "fit" },
     { text: f("date"), short: f("short") },
   ] });
 }
