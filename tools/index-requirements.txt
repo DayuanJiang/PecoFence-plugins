@@ -1,0 +1,4 @@
+# Every package index.yml installs to sign index.json, with its version (pip install -r).
+cffi==2.1.1
+cryptography==50.0.2
+pycparser==3.12

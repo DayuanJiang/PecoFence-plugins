@@ -18,7 +18,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Actions by commit, packages by version: what runs next to the signing key changes only
+      # through a change to this repository.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The index's serial is the count of commits on main: it needs the whole history.
           fetch-depth: 0
@@ -27,14 +29,15 @@ jobs:
           INDEX_SIGNING_KEY: ${{ secrets.INDEX_SIGNING_KEY }}
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check cryptography
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check -r tools/index-requirements.txt
           "$RUNNER_TEMP/venv/bin/python" tools/build-index.py --commit "$GITHUB_SHA" --out "$RUNNER_TEMP/feed" --require-signature
       - name: Publish when it changed
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          current=$(gh api "repos/$REPO/contents/index.json?ref=index" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true)
+          # The raw file: the contents API's JSON leaves "content" empty for a file over 1 MB.
+          current=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/index.json?ref=index" 2>/dev/null || true)
           if [ "$current" = "$(cat "$RUNNER_TEMP/feed/index.json")" ]; then echo "index.json unchanged"; exit 0; fi
           cd "$RUNNER_TEMP/feed"
           git init -q -b index
