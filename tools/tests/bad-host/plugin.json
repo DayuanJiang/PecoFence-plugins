@@ -1,0 +1,6 @@
+{
+  "id": "bad-host", "version": "1.0.0", "api": 1, "layer": "light",
+  "name": { "en": "Bad: undeclared host" },
+  "description": { "en": "Test plugin for the checks: sends the IP address to a host it does not declare." },
+  "author": "DayuanJiang", "minPecoFence": "0.5.0", "permissions": { "network": ["wttr.in"] }
+}

@@ -1,0 +1,6 @@
+{
+  "id": "bad-eval", "version": "1.0.0", "api": 1, "layer": "light",
+  "name": { "en": "Bad: eval" },
+  "description": { "en": "Test plugin for the checks: runs code made from text." },
+  "author": "DayuanJiang", "minPecoFence": "0.5.0", "permissions": {}
+}
