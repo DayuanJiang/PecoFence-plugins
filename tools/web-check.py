@@ -3,13 +3,13 @@
 
 The page gets its files from https://<id>.plugins.pecofence/ (PecoFence itself uses
 pecofence-plugin://<id>/; a plugin must not depend on its address), each with the
-Content Security Policy PecoFence sends, and a stand-in `pf` that records every call and answers
-with fixed values of the shapes AGENTS.md gives. Nothing reaches the network: every other request
+Content Security Policy, type and nosniff PecoFence sends, and a stand-in `pf` that records every
+call and answers with fixed values of the shapes AGENTS.md gives (a call over 1 MB is refused). Nothing reaches the network: every other request
 and WebSocket is recorded, then refused. Fails on a request to a host the manifest does not
 declare, a script, style, font or picture from the network, a WebSocket to an undeclared host,
-WebRTC, a refused pf call, something the CSP blocks (an inline script or style, a data: picture),
-an error or a rejected Promise nobody catches, one of the plugin's own files that is not there,
-or a page that does not load.
+WebRTC, a refused pf call, something the CSP blocks (an inline script or style, a data: picture), a
+script from a file that is no .js, an error or a rejected Promise nobody catches, one of the
+plugin's own files that is not there, or a page that does not load.
 
 Usage: python3 tools/web-check.py plugins/<id> [--seconds 20] [--json result.json]
 Needs: pip install playwright && playwright install chromium
@@ -17,7 +17,6 @@ Needs: pip install playwright && playwright install chromium
 import argparse
 import collections
 import json
-import mimetypes
 import pathlib
 import sys
 import time
@@ -33,7 +32,7 @@ CLIPBOARD = ["none", "write", "read", "readwrite"]
 # pf.settings and pf.fence first, and an error in a handler is caught and counted, as there.
 STUB = """
 (() => {
-  const P = __PERMS__, record = (name, args, refused) => window.__pfRecord(name, JSON.stringify(args), refused || "");
+  const P = __PERMS__, record = (name, args, refused) => window.__pfRecord(name, JSON.stringify(args).slice(0, 200), refused || "");
   const handlers = {}, data = new Map();
   const state = { lang: "en", theme: "dark", settings: __SETTINGS__, fence: { id: "check", width: 320, height: 240 } };
   const clip = ["none", "write", "read", "readwrite"].indexOf(P.clipboard || "none");
@@ -44,10 +43,14 @@ STUB = """
     if (!authority || /[@\\s]/.test(authority[1]) || authority[1].includes(String.fromCharCode(92)) || [...text].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) return "";
     try { return new URL(u).hostname; } catch (e) { return ""; }
   };
+  // As PecoFence's bridge: every call is a message { id, call, args }, refused in the page with a
+  // RangeError when it is over 1 MB as JSON in UTF-8.
+  let n = Math.floor(Math.random() * 1e9);
   const call = (name, args, refuse, answer) => {
-    const why = refuse ? refuse() : "";
+    const big = new TextEncoder().encode(JSON.stringify({ id: ++n, call: name, args })).length > 1048576;
+    const why = big ? "a message to PecoFence is at most 1 MB" : refuse ? refuse() : "";
     record(name, args, why);
-    return why ? Promise.reject(new Error(why)) : Promise.resolve(answer === undefined ? null : answer);
+    return why ? Promise.reject(big ? new RangeError(`pf.${name}: ${why}`) : new Error(why)) : Promise.resolve(answer === undefined ? null : answer);
   };
   const needHost = (u, list, field) => () => !host(u) ? "an address PecoFence refuses (AGENTS.md 3.1)"
     : list.includes(host(u)) ? "" : `${host(u)} is not in permissions.${field}`;
@@ -70,15 +73,15 @@ STUB = """
   };
   const pf = {
     on: (name, fn) => { record("on", [name]); (handlers[name] = handlers[name] || []).push(fn); },
-    post: (d) => { const size = new TextEncoder().encode(JSON.stringify(d === undefined ? null : d)).length; const why = size > 1048576 ? "a message over 1 MB is refused" : ""; record("post", [size], why); return why ? Promise.reject(new RangeError("pf.post: " + why)) : Promise.resolve(null); },
+    post: (d) => call("post", [d === undefined ? null : d]),
     time: { now: () => call("time.now", [], null, Date.now()), format: (ms, kind) => call("time.format", [ms, kind], null, new Date(ms).toLocaleString()) },
     http: { get: (u, o) => call("http.get", [u, o], offline(u, P.network || [])), post: (u, o) => call("http.post", [u, o], offline(u, P.network || [])) },
     data: { read: (n) => call("data.read", [n], null, data.has(n) ? data.get(n) : null),
-            write: (n, t) => { const text = typeof t === "string" ? t : JSON.stringify(t); data.set(n, text); return call("data.write", [n, text.length]); },
+            write: (n, t) => { const text = typeof t === "string" ? t : JSON.stringify(t); data.set(n, text); return call("data.write", [n, t]); },
             list: () => call("data.list", [], null, [...data.keys()].sort()), remove: (n) => { data.delete(n); return call("data.remove", [n]); } },
     clipboard: { text: () => call("clipboard.text", [], needClip(2), { text: "text on the clipboard", truncated: false }),
                  files: () => call("clipboard.files", [], needClip(2), null), image: (n) => call("clipboard.image", [n], needClip(2), null),
-                 setText: (t) => call("clipboard.setText", [String(t).length], needClip(1)), setFiles: (f) => call("clipboard.setFiles", [f], needClip(1)),
+                 setText: (t) => call("clipboard.setText", [t], needClip(1)), setFiles: (f) => call("clipboard.setFiles", [f], needClip(1)),
                  setImage: (n) => call("clipboard.setImage", [n], needClip(1)) },
     sys: { cpu: () => call("sys.cpu", [], null, 12), memory: () => call("sys.memory", [], null, 38),
            drives: () => call("sys.drives", [], null, [{ letter: "C", free: 2e11, size: 5e11 }]), ip: () => call("sys.ip", [], null, "192.168.1.20"),
@@ -104,6 +107,13 @@ def csp(network):
     return f"default-src 'self'; connect-src 'self'{connect}; frame-src 'none'; form-action 'none'"
 
 
+# The type PecoFence gives each file by its extension (web_plugin.rs, mime), with nosniff: a
+# browser runs a script only from a .js file.
+MIME = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8", "css": "text/css; charset=utf-8",
+        "json": "application/json", "svg": "image/svg+xml", "png": "image/png", "jpg": "image/jpeg",
+        "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "woff2": "font/woff2"}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("plugin")
@@ -120,34 +130,37 @@ def main():
     network = list(perms.get("network", []))
     settings = {s["key"]: s.get("default") for s in m.get("settings", [])}
     origin = f"https://{m['id']}.plugins.pecofence"
-    header = csp(network)
+    headers = {"Content-Security-Policy": csp(network), "X-Content-Type-Options": "nosniff"}
     requests, sockets, calls, refused, errors, blocked, missing = [], [], collections.Counter(), [], [], [], []
     failures, notes = [], []
 
     def serve(route):
         url = urllib.parse.urlsplit(route.request.url)
         if f"{url.scheme}://{url.netloc}" == origin:
-            path = (root / urllib.parse.unquote(url.path).lstrip("/")).resolve()
-            if path == root:
-                path = root / "index.html"
-            if root in path.parents and path.is_file():
-                kind = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-                return route.fulfill(status=200, body=path.read_bytes(), content_type=kind,
-                                     headers={"Content-Security-Policy": header})
+            # The path as PecoFence takes it: nothing decoded (a '%' finds no file), no empty
+            # part, no '.' or '..', no '\' or ':'.
+            path = url.path[1:] or "index.html"
+            plain = all(p not in ("", ".", "..") and not any(c in p for c in "\\:%") for p in path.split("/"))
+            if plain and (root / path).is_file():
+                kind = MIME.get(path.rsplit(".", 1)[-1], "application/octet-stream")
+                return route.fulfill(status=200, body=(root / path).read_bytes(), headers={**headers, "Content-Type": kind})
             # The browser asks for a tab icon by itself; a plugin has none.
             if url.path != "/favicon.ico":
                 missing.append(url.path)
-            return route.fulfill(status=404, body=b"", headers={"Content-Security-Policy": header})
+            return route.fulfill(status=404, body=b"", headers=headers)
         requests.append((time.monotonic(), url.hostname or url.scheme, route.request.resource_type, route.request.url))
         return route.abort("internetdisconnected")
 
     def record(name, args_json, why):
         calls[name] += 1
         if why and not why.startswith("offline"):
-            refused.append(f"{name}{json.loads(args_json)}: {why}")
+            refused.append(f"{name}({args_json[:100]}): {why}")
 
     def console(msg):
-        if msg.type == "error" and not msg.text.startswith("Failed to load resource") and "Content Security Policy" not in msg.text:
+        # A script from a file that is no .js does not run (nosniff), in PecoFence too.
+        if msg.type == "error" and msg.text.startswith("Refused to execute script"):
+            failures.append(msg.text.split(" because")[0][:200] + ": a script comes from a .js file")
+        elif msg.type == "error" and not msg.text.startswith("Failed to load resource") and "Content Security Policy" not in msg.text:
             notes.append(msg.text[:200])
 
     with sync_playwright() as p:
