@@ -31,15 +31,22 @@ FIELDS = ["id", "version", "api", "layer", "name", "description", "author", "min
 
 
 def entry(folder, disabled):
+    """The index entry of one plugin folder; ValueError (or OSError) when it cannot be one."""
     m = json.loads((folder / "plugin.json").read_bytes().decode("utf-8-sig"))
+    if not isinstance(m, dict) or m.get("id") != folder.name:
+        raise ValueError("plugin.json is no object whose id is the folder's name")
     files = []
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         data, name = path.read_bytes(), path.relative_to(folder).as_posix()
         # The same names tools/check.py allows: no "..", no leading "/", no backslash or drive, no
-        # trailing dot and no Windows device name (PecoFence drops an entry with such a file).
-        if not all(re.fullmatch(r"(?i)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)", part)
-                   for part in name.split("/")):
-            sys.exit(f"{folder.name}: the file name {name!r} is not allowed")
+        # trailing dot, no Windows device name, at most 200 characters, and no two that differ
+        # only in case (PecoFence drops an entry with such a file).
+        if len(name) > 200 or not all(
+                re.fullmatch(r"(?i)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)", part)
+                for part in name.split("/")):
+            raise ValueError(f"the file name {name!r} is not allowed")
+        if any(f["name"].lower() == name.lower() for f in files):
+            raise ValueError(f"the file names of {name!r} differ only in case")
         files.append({"name": name, "size": len(data),
                       "sha256": hashlib.sha256(data).hexdigest()})
     e = {k: m[k] for k in FIELDS if k in m}
@@ -77,7 +84,15 @@ def main():
         serial = int(git("rev-list", "--count", commit))
     disabled = json.loads((ROOT / "disabled.json").read_text(encoding="utf-8")) if (ROOT / "disabled.json").exists() else {}
     folders = [pathlib.Path(p).resolve() for p in args.plugin] or sorted(p for p in (ROOT / "plugins").iterdir() if p.is_dir())
-    plugins = [entry(f, disabled) for f in folders]
+    # A folder that cannot be an entry is left out with a warning; the others are published.
+    good, plugins = [], []
+    for f in folders:
+        try:
+            plugins.append(entry(f, disabled))
+            good.append(f)
+        except (OSError, ValueError, KeyError) as e:
+            print(f"::warning::{f.name} left out of index.json: {e}", file=sys.stderr)
+    folders = good
     data = (json.dumps({"format": 1, "serial": serial, "commit": commit, "plugins": plugins}, ensure_ascii=False, indent=1) + "\n").encode()
 
     out = pathlib.Path(args.out)

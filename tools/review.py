@@ -73,6 +73,19 @@ def plugin_files(pid, ref):
     return sorted(t["path"] for t in tree["tree"] if t["type"] == "blob" and t["path"].startswith(prefix))
 
 
+def one_plugin(files):
+    """The id of the one plugin folder the pull request's files change, or None. A moved file
+    counts at its old path too (previous_filename), and a plugin.json that goes away (removed or
+    moved) is no change to review."""
+    paths = [f["filename"] for f in files] + [f["previous_filename"] for f in files if f.get("previous_filename")]
+    ids = {m.group(1) if (m := re.fullmatch(r"plugins/([^/]+)/.+", p)) else None for p in paths}
+    gone = [f.get("previous_filename") or f["filename"] for f in files
+            if f["status"] == "removed" or f.get("previous_filename")]
+    if len(ids) != 1 or None in ids or any(re.fullmatch(r"plugins/[^/]+/plugin\.json", p) for p in gone):
+        return None
+    return ids.pop()
+
+
 def post_review(sha, event, body):
     gh(f"/repos/{REPO}/pulls/{PR}/reviews", "POST", {"commit_id": sha, "event": event, "body": body})
     print(f"posted {event}")
@@ -88,11 +101,10 @@ def main():
         if len(batch) < 100:
             break
         page += 1
-    ids = {m.group(1) if (m := re.fullmatch(r"plugins/([^/]+)/.+", f["filename"])) else None for f in files}
-    if len(ids) != 1 or None in ids or any(f["status"] == "removed" and f["filename"].endswith("/plugin.json") for f in files):
+    pid = one_plugin(files)
+    if not pid:
         print("Not a change to one plugin folder: no automatic review.")
         return 0
-    pid = ids.pop()
 
     parts = [f'<pull_request number="{PR}" author="{pr["user"]["login"]}">',
              f"<title>{pr['title']}</title>", f"<body>{pr.get('body') or ''}</body>"]
