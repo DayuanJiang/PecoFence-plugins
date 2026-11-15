@@ -2,9 +2,12 @@
 # the verdict as a pull request review: APPROVE or REQUEST_CHANGES.
 # It runs from this repository's main branch (pull_request_target) and reads the pull request's
 # files through the GitHub API as text; it never runs them. It starts once the static check of the
-# same commit passed; a review that cannot finish requests changes.
-# Environment: GH_TOKEN (pull requests write, checks read), REPO (owner/name), PR (number); AWS
-# credentials for us-east-1.
+# same commit passed; a review that cannot finish requests changes. When the static check has not
+# finished after 20 minutes (a first-time contributor's checks wait for the owner's approval), it
+# posts no verdict, only a comment, and review.yml runs it again once the checks completed
+# (workflow_run, with HEAD_SHA in place of PR).
+# Environment: GH_TOKEN (pull requests write, checks read), REPO (owner/name), PR (number) or
+# HEAD_SHA (the commit whose checks completed); AWS credentials for us-east-1.
 import json
 import os
 import pathlib
@@ -18,7 +21,7 @@ import urllib.request
 
 from anthropic import AnthropicBedrockMantle
 
-REPO, PR, TOKEN = os.environ["REPO"], os.environ["PR"], os.environ["GH_TOKEN"]
+REPO, PR, TOKEN = os.environ["REPO"], os.environ.get("PR", ""), os.environ["GH_TOKEN"]
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # The second model runs only when the first one declines the request.
 MODELS = ["anthropic.claude-opus-5-5", "anthropic.claude-opus-4-8"]
@@ -28,6 +31,8 @@ TEXT_EXT = (".json", ".js", ".html", ".css", ".svg", ".md")
 MAX_TEXT = 200_000
 # How long the review waits for the static check of the same commit.
 STATIC_WAIT = 20 * 60
+# The first line of the comment that says the review comes after the checks of a commit.
+WAITING = "<!-- automatic review waits for the checks of {} -->"
 
 SCHEMA = {
     "type": "object",
@@ -64,6 +69,17 @@ def gh(path, method="GET", body=None, raw=False):
     with urllib.request.urlopen(req, timeout=60) as r:
         data = r.read()
     return data if raw else json.loads(data or b"null")
+
+
+def pages(path):
+    """Every item of a GitHub list, 100 a page."""
+    items, page = [], 1
+    while True:
+        batch = gh(f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}")
+        items += batch
+        if len(batch) < 100:
+            return items
+        page += 1
 
 
 def content(path, ref):
@@ -118,18 +134,20 @@ def static_passed(head):
 
 def review(pr):
     head, base = pr["head"]["sha"], pr["base"]["sha"]
-    files, page = [], 1
-    while True:
-        batch = gh(f"/repos/{REPO}/pulls/{PR}/files?per_page=100&page={page}")
-        files += batch
-        if len(batch) < 100:
-            break
-        page += 1
+    files = pages(f"/repos/{REPO}/pulls/{PR}/files")
     pid = one_plugin(files)
     if not pid:
         print("Not a change to one plugin folder: no automatic review.")
         return 0
-    if not static_passed(head):
+    try:
+        passed = static_passed(head)
+    except TimeoutError as e:
+        # No verdict on a commit whose checks did not run yet: the review comes after them.
+        print(f"{e}: the review comes after the checks")
+        gh(f"/repos/{REPO}/issues/{PR}/comments", "POST", {"body": WAITING.format(head) + "\n**Automatic review**\n\n"
+           "The checks of this commit have not run yet, so the review comes after them."})
+        return 0
+    if not passed:
         print("The static check did not pass: no automatic review (the check says what to fix).")
         return 0
 
@@ -143,7 +161,8 @@ def review(pr):
     new, old = plugin_files(pid, head), set(plugin_files(pid, base))
     for path in new + sorted(old - set(new)):
         if not path.lower().endswith(TEXT_EXT):
-            parts.append(f"(file {path}, {'new' if path in new else 'old'} version: a picture or font, not shown)")
+            parts.append(f"{begin} file {path}, {'new' if path in new else 'old'} version\n"
+                         f"(a picture or font, not shown)\n{end}")
             continue
         for label, ref in (("new", head), ("old", base)):
             data = content(path, ref) if label == "new" or path in old else None
@@ -197,7 +216,20 @@ def review(pr):
 
 
 def main():
-    pr = gh(f"/repos/{REPO}/pulls/{PR}")
+    global PR
+    if PR:
+        pr = gh(f"/repos/{REPO}/pulls/{PR}")
+    else:
+        # The checks of commit HEAD_SHA completed: its open pull request is reviewed when the
+        # review gave up waiting for them (this workflow's own comment says so).
+        head = os.environ["HEAD_SHA"]
+        pr = next((p for p in pages(f"/repos/{REPO}/pulls?state=open") if p["head"]["sha"] == head), None)
+        waited = pr and any(c["user"]["login"] == "github-actions[bot]" and c["body"].startswith(WAITING.format(head))
+                            for c in pages(f"/repos/{REPO}/issues/{pr['number']}/comments"))
+        if not waited or pr["draft"]:
+            print(f"No pull request of {head} waits for its review.")
+            return 0
+        PR = str(pr["number"])
     try:
         return review(pr)
     except Exception as e:

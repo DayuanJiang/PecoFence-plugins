@@ -24,3 +24,9 @@ What the automation needs from the repository's owner, outside the files here:
 - The Actions secret `INDEX_SIGNING_KEY` (from `tools/make-key.py`), whose public key is in
   PecoFence's `crates/core/src/plugins.rs`.
 - The AWS role `pecofence-plugins-review`, which only `review.yml` on `main` can assume.
+- Settings › Actions › General, approval for fork pull request workflows: *Require approval for
+  first-time contributors who are new to GitHub*, the least strict choice. The checks run with a
+  read-only token and no secrets, so they need no approval to be safe; the review comes only
+  after them, so a stricter choice would hold every new author's pull request until you approve
+  its checks. A pull request from an account new to GitHub still waits for you: its review says
+  it comes after the checks, and runs once you approved them and they completed.
