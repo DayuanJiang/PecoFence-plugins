@@ -25,10 +25,12 @@ jobs:
           role-to-assume: arn:aws:iam::904233105607:role/pecofence-plugins-review
           aws-region: us-east-1
       - name: Install the Anthropic SDK
-        run: pip install --quiet --disable-pip-version-check "anthropic[bedrock]"
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check "anthropic[bedrock]"
       - name: Review
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-        run: python3 -I tools/review.py
+        run: '"$RUNNER_TEMP/venv/bin/python" -I tools/review.py'
