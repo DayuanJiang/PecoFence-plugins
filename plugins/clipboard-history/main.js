@@ -90,7 +90,8 @@ const TEXTS = {
         delTip: "Elimina questa voce", copyTip: "Clicca per copiarla di nuovo, doppio clic per vederne di più",
         image: "Immagine", file: "file", files: "file", chars: "caratteri", cut: "Sono stati tenuti solo i primi 256 KB di questo testo" },
 };
-const t = TEXTS[pf.lang] || TEXTS.en;
+let t = TEXTS[pf.lang] || TEXTS.en;
+pf.on("lang", () => { t = TEXTS[pf.lang] || TEXTS.en; draw(); });
 
 // This fence's files in the data folder start with OWN: its id and a hyphen, which PecoFence
 // reads as files of this fence and deletes with it.
@@ -297,7 +298,6 @@ function entryRows(e) {
 
 function rows() {
   const purge = [
-    { id: "all", text: t.deleteAll },
     { id: "auto", check: cfg.auto, text: t.auto, tip: t.autoTip },
     { id: "less", icon: ICON.less, tip: t.less },
     { id: "value", text: delay(cfg.seconds), width: 84, align: "center", tip: t.valueTip },
@@ -309,7 +309,8 @@ function rows() {
     const two = (n) => String(n).padStart(2, "0");
     purge.push({ text: `${two(Math.floor(left / 60))}:${two(left % 60)}`, color: "gray", width: 40 });
   }
-  const out = [{ cells: [{ id: "show", check: cfg.show, text: t.show, tip: t.showTip }] }, { cells: purge }];
+  // Delete all beside Show entries: the purge's row keeps < delay > together in a 400 px fence.
+  const out = [{ cells: [{ id: "show", check: cfg.show, text: t.show, tip: t.showTip }, { id: "all", text: t.deleteAll }] }, { cells: purge }];
   if (typing) out.push({ input: { id: "delay", type: "line", value: "", placeholder: t.typeDelay } });
   out.push({ separator: true });
   // What is above stays in place; the entries scroll under it. Pinned ones first, a line, then

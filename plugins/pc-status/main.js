@@ -38,7 +38,8 @@ const TEXTS = {
         copied: "Copiato {0}", noIp: "Indirizzo IP: nessuna rete", findingIp: "Indirizzo IP: ricerca…",
         taskmgr: "Apri Gestione attività", drive: "{0}: {1} GB liberi ({2}%)" },
 };
-const t = TEXTS[pf.lang] || TEXTS.en;
+let t = TEXTS[pf.lang] || TEXTS.en;
+pf.on("lang", () => { t = TEXTS[pf.lang] || TEXTS.en; draw(); });
 const fill = (text, ...values) => text.replace(/\{(\d)\}/g, (_, i) => String(values[i]));
 const GB = 1024 * 1024 * 1024;
 

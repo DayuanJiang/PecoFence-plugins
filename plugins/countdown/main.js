@@ -26,7 +26,16 @@ const TEXTS = {
   it: { left: "tra {0} giorni", tomorrow: "domani", today: "oggi", yesterday: "ieri", ago: "{0} giorni fa",
         none: "Ancora nessuna data: aggiungile nel menu del riquadro, Impostazioni del plugin", bad: "Non capito: {0}" },
 };
-const t = TEXTS[pf.lang] || TEXTS.en;
+let t = TEXTS[pf.lang] || TEXTS.en;
+pf.on("lang", () => { t = TEXTS[pf.lang] || TEXTS.en; draw(); });
+// The setting's default (plugin.json), shown with its names in the user's language.
+const DEFAULT = "12-25 Christmas; 01-01 New Year";
+const EXAMPLE = {
+  "zh-CN": "12-25 圣诞节; 01-01 元旦", "zh-TW": "12-25 聖誕節; 01-01 元旦", ja: "12-25 クリスマス; 01-01 元日",
+  ko: "12-25 크리스마스; 01-01 새해", de: "12-25 Weihnachten; 01-01 Neujahr", fr: "12-25 Noël; 01-01 Nouvel An",
+  es: "12-25 Navidad; 01-01 Año Nuevo", "pt-BR": "12-25 Natal; 01-01 Ano-Novo", ru: "12-25 Рождество; 01-01 Новый год",
+  it: "12-25 Natale; 01-01 Capodanno",
+};
 const DAY = 24 * 60 * 60 * 1000;
 let shown = "";
 
@@ -57,7 +66,8 @@ function parse(entry, today) {
 
 function rows() {
   const today = new Date(pf.time.now());
-  const entries = String(pf.settings.dates || "").split(/[;；\n]/).map((s) => s.trim()).filter(Boolean);
+  const dates = pf.settings.dates === DEFAULT ? EXAMPLE[pf.lang] || DEFAULT : pf.settings.dates;
+  const entries = String(dates || "").split(/[;；\n]/).map((s) => s.trim()).filter(Boolean);
   const items = entries.map((e) => parse(e, today));
   const upcoming = items.filter((i) => i.days >= 0).sort((a, b) => a.days - b.days);
   const past = pf.settings.past ? items.filter((i) => i.days < 0).sort((a, b) => b.days - a.days) : [];

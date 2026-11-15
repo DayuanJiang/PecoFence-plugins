@@ -61,7 +61,7 @@ const TEXTS = {
         failed: "Al momento niente meteo da wttr.in, nuovo tentativo alle {0}",
         unknown: "wttr.in non conosce «{0}». Cambia la città nel menu del riquadro, Impostazioni del plugin." },
 };
-const t = TEXTS[pf.lang] || TEXTS.en;
+let t = TEXTS[pf.lang] || TEXTS.en;
 const fill = (text, ...values) => text.replace(/\{(\d)\}/g, (_, i) => String(values[i]));
 // wttr.in's names of the display languages (English needs none).
 const LANG = { en: "", "zh-CN": "zh-cn", "zh-TW": "zh-tw", "pt-BR": "pt-br" };
@@ -93,7 +93,12 @@ function read(w, city, lang) {
   const [today, tomorrow] = w.weather;
   const area = w.nearest_area && w.nearest_area[0];
   const place = city || (area ? area.areaName[0].value : "");
-  const desc = (now["lang_" + lang] || now.weatherDesc)[0].value;
+  // wttr.in leaves a description now and then in English ("Smoky haze"): its translation of
+  // the same weather code elsewhere in the answer is taken then.
+  const own = (e) => (e["lang_" + lang] || e.weatherDesc)[0].value;
+  const english = (e) => own(e).trim() === e.weatherDesc[0].value.trim();
+  const same = lang && english(now) && w.weather.flatMap((d) => d.hourly).find((h) => h.weatherCode === now.weatherCode && !english(h));
+  const desc = own(same || now);
   const rain = Math.max(0, ...tomorrow.hourly.map((h) => Number(h.chanceofrain) || 0));
   return [
     { text: `${place}  ${now.temp_C}°C  ${desc}`, icon: icon(now.weatherCode), size: "large" },
@@ -165,6 +170,12 @@ function due() {
 }
 
 pf.on("start", () => {
+  draw();
+  ask();
+});
+// Another display language: the texts at once, wttr.in's descriptions with its next answer.
+pf.on("lang", () => {
+  t = TEXTS[pf.lang] || TEXTS.en;
   draw();
   ask();
 });

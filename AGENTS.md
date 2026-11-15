@@ -126,7 +126,7 @@ These answer at once:
 | `pf.time.now()` | milliseconds since 1970, as `Date.now()` |
 | `pf.time.format(ms, kind)` | the time as PecoFence's own clock writes it, in the user's Windows region format: `time` (hours and minutes), `seconds` (with seconds), `date` (the long date with the weekday), `short` (the date of a narrow clock, such as `Wed, Nov 4`), `weekday`. Without `kind`, `short`; another kind gives `""` |
 | `pf.settings` | this fence's settings by `key` (the manifest's `default` where the user set nothing); replaced before each `settings` event |
-| `pf.lang` | the display language: `en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt-BR`, `ru` or `it` |
+| `pf.lang` | the display language: `en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt-BR`, `ru` or `it`; it follows a change (the `lang` event) |
 | `pf.theme` | `light` or `dark` |
 | `pf.fence` | `{ id, width, height }`: the fence's id (text, the same for the fence's whole life) and the size of its content in pixels at 100 %; `width` and `height` change before each `resize` event |
 
@@ -223,6 +223,7 @@ before the handler's first `await`.
 | `settings` | the user changed this fence's settings | the new settings (also in `pf.settings`) |
 | `clipboard` | the clipboard changed, once per copy (100 ms after its last step), also when the plugin itself wrote it; not for content marked private; only with `clipboard` `read` or `readwrite` | none |
 | `theme` | the fence's text changed between light and dark (after a change of the theme or of the fence's color) | `"light"` or `"dark"` (also in `pf.theme`) |
+| `lang` | the user changed PecoFence's display language; show your texts in it (the plugin is not started again) | the new language, as `pf.lang` (also in `pf.lang`) |
 | `timechange` | the system time, the time zone or the region format changed | none |
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits. The handler has its 50 ms as any run. The calls it makes then are sent (at most 16 at once, as always), but their Promises never settle: the plugin is gone when the answers come, so it cannot wait for one | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
@@ -356,7 +357,7 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   or when one run (an event, a timer or an answer) would send more than 100 messages or 4 MB. In
   the page, `pf.post` returns a Promise: `null` once PecoFence handed the message on, a
   `RangeError` for one over 1 MB, an error while 64 messages still wait for `main.js`.
-- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message`, `theme`
+- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message`, `theme`, `lang`
   (`light` or `dark`) and, with `clipboard` `read` or `readwrite`, `clipboard`; `pf.theme`,
   `pf.settings` and `pf.fence` follow them. A page gets no `start`: its scripts run when it loads.
   An error in a handler is caught and written to the page's console.

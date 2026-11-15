@@ -68,7 +68,8 @@ const TEXTS = {
         bad: "Scrivi il repository come owner/name nel menu del riquadro, Impostazioni del plugin",
         none: "Nessuna issue o pull request aperta", tip: "{0}, {1}" },
 };
-const t = TEXTS[pf.lang] || TEXTS.en;
+let t = TEXTS[pf.lang] || TEXTS.en;
+pf.on("lang", () => { t = TEXTS[pf.lang] || TEXTS.en; draw(); });
 const fill = (text, ...values) => text.replace(/\{(\d)\}/g, (_, i) => String(values[i]));
 const MINUTE = 60 * 1000;
 
