@@ -1,6 +1,6 @@
 {
   "id": "countdown",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": { "en": "Countdown", "zh-CN": "倒数日" },
   "description": {
     "en": "Days left until the dates you choose. Click a row to edit the list.",
