@@ -1,7 +1,8 @@
 // Weather: the weather now, today and tomorrow from wttr.in, for the city in this fence's setting
 // "city" (empty: the place wttr.in finds from the network address). It asks every 30 minutes
-// while the fence shows, at once when the city changes, and when the user clicks the last row.
-// wttr.in writes the description of the weather in the display language.
+// while the fence shows, at once when the city changes, and when the user clicks the last row
+// (not within a minute of the last request). When wttr.in says to wait (Retry-After), nothing
+// asks before then. wttr.in writes the description of the weather in the display language.
 
 const TEXTS = {
   en: { feels: "Feels like {0}°C, humidity {1}%, wind {2} km/h",
@@ -69,6 +70,8 @@ const MINUTE = 60 * 1000;
 let weather = null; // { place, rows } of the last answer
 let fetchedAt = 0;
 let nextAt = 0; // when to ask next
+let waitUntil = 0; // wttr.in asked to wait until then (Retry-After): no request asks sooner
+let askedAt = 0; // when the last request went out
 let problem = ""; // why the last request failed
 let busy = false;
 
@@ -110,9 +113,22 @@ function draw() {
   pf.show({ rows });
 }
 
+// Retry-After in ms: seconds, or a date.
+function retryAfter(answer) {
+  const h = answer.headers["retry-after"];
+  if (!h) return 0;
+  return Number(h) * 1000 || Math.max(0, Date.parse(h) - pf.time.now()) || 0;
+}
+
 async function ask() {
   if (busy) return;
+  if (pf.time.now() < waitUntil) {
+    problem = fill(t.failed, pf.time.format(waitUntil, "time"));
+    nextAt = waitUntil;
+    return draw();
+  }
   busy = true;
+  askedAt = pf.time.now();
   const city = String(pf.settings.city || "").trim();
   const lang = LANG[pf.lang] ?? pf.lang;
   const url = `https://wttr.in/${encodeURIComponent(city)}?format=j1` + (lang ? `&lang=${lang}` : "");
@@ -120,9 +136,10 @@ async function ask() {
   try {
     const answer = await pf.http.get(url);
     if (answer.status !== 200) {
-      // Retry-After is honoured; without it the next try is in 5 minutes.
-      const after = Number(answer.headers["retry-after"]) || 0;
-      wait = Math.max(5 * MINUTE, after * 1000);
+      // Retry-After holds back every request; without it the next try is in 5 minutes.
+      const after = retryAfter(answer);
+      if (after) waitUntil = pf.time.now() + after;
+      wait = Math.max(5 * MINUTE, after);
       const notFound = city && /not found/i.test(answer.body || "");
       problem = notFound ? fill(t.unknown, city) : fill(t.failed, pf.time.format(pf.time.now() + wait, "time"));
     } else {
@@ -160,5 +177,5 @@ pf.on("settings", () => {
   ask();
 });
 pf.on("click", (e) => {
-  if (e.id === "refresh") ask();
+  if (e.id === "refresh" && pf.time.now() - askedAt >= MINUTE) ask();
 });
