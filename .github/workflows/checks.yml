@@ -15,7 +15,7 @@ concurrency:
 env:
   # The PecoFence commit whose crates/plugin-check the run check uses. Raise it when PecoFence's
   # plugin host changes.
-  PECOFENCE_COMMIT: e928a8810ba9cd594933d0915945e57fd6adda22
+  PECOFENCE_COMMIT: 88a52ae2dbbf7f55cb0a82070743ee643bbead0f
   PLAYWRIGHT_VERSION: 1.65.2
 
 jobs:
