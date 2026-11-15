@@ -17,8 +17,8 @@ REPO, PR, TOKEN = os.environ["REPO"], os.environ["PR"], os.environ["GH_TOKEN"]
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # The second model runs only when the first one declines the request.
 MODELS = ["anthropic.claude-opus-5-5", "anthropic.claude-opus-4-8"]
-TEXT_FILES = ("plugin.json", "main.ps1", "README.md")
-MAX_TEXT = 400_000
+TEXT_EXT = (".json", ".js", ".html", ".css", ".svg", ".md")
+MAX_TEXT = 600_000
 
 SCHEMA = {
     "type": "object",
@@ -66,6 +66,13 @@ def content(path, ref):
         raise
 
 
+def plugin_files(pid, ref):
+    """The paths of plugin `pid`'s files at commit `ref` (sub-folders too), sorted."""
+    tree = gh(f"/repos/{REPO}/git/trees/{ref}?recursive=1")
+    prefix = f"plugins/{pid}/"
+    return sorted(t["path"] for t in tree["tree"] if t["type"] == "blob" and t["path"].startswith(prefix))
+
+
 def post_review(sha, event, body):
     gh(f"/repos/{REPO}/pulls/{PR}/reviews", "POST", {"commit_id": sha, "event": event, "body": body})
     print(f"posted {event}")
@@ -81,8 +88,8 @@ def main():
         if len(batch) < 100:
             break
         page += 1
-    ids = {m.group(1) if (m := re.fullmatch(r"plugins/([^/]+)/[^/]+", f["filename"])) else None for f in files}
-    if len(ids) != 1 or None in ids or any(f["status"] == "removed" for f in files):
+    ids = {m.group(1) if (m := re.fullmatch(r"plugins/([^/]+)/.+", f["filename"])) else None for f in files}
+    if len(ids) != 1 or None in ids or any(f["status"] == "removed" and f["filename"].endswith("/plugin.json") for f in files):
         print("Not a change to one plugin folder: no automatic review.")
         return 0
     pid = ids.pop()
@@ -90,20 +97,22 @@ def main():
     parts = [f'<pull_request number="{PR}" author="{pr["user"]["login"]}">',
              f"<title>{pr['title']}</title>", f"<body>{pr.get('body') or ''}</body>"]
     size = 0
-    for name in TEXT_FILES:
+    new, old = plugin_files(pid, head), set(plugin_files(pid, base))
+    for path in new + sorted(old - set(new)):
+        if not path.endswith(TEXT_EXT):
+            parts.append(f'<file path="{path}" version="{"new" if path in new else "old"}">(a picture or font, not shown)</file>')
+            continue
         for label, ref in (("new", head), ("old", base)):
-            data = content(f"plugins/{pid}/{name}", ref)
+            data = content(path, ref) if label == "new" or path in old else None
             if data is None:
                 continue
             size += len(data)
-            parts.append(f'<file path="plugins/{pid}/{name}" version="{label}">\n'
+            parts.append(f'<file path="{path}" version="{label}">\n'
                          f'{data.decode("utf-8-sig", errors="replace")}\n</file>')
-    if content(f"plugins/{pid}/screenshot.png", head) is not None:
-        parts.append(f'<file path="plugins/{pid}/screenshot.png" version="new">(a picture, not shown)</file>')
     parts.append("</pull_request>")
     if size > MAX_TEXT:
         post_review(head, "REQUEST_CHANGES", "**Automatic review**\n\nThe plugin's text files are too large to review "
-                    f"({size} bytes; AGENTS.md section 1 allows `main.ps1` at most 200 KB).")
+                    f"({size} bytes of text, new and old versions together).")
         return 0
 
     rules = (ROOT / "AGENTS.md").read_text(encoding="utf-8")

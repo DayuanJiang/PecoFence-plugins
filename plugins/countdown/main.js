@@ -50,7 +50,7 @@ function rows() {
   const out = upcoming.map((i) => ({
     text: `${i.name}  ${i.days === 0 ? t.today : i.days === 1 ? t.tomorrow : fill(t.left, i.days)}`,
     color: i.days <= 1 ? "green" : undefined,
-    bold: i.days === 0,
+    bold: i.days === 0 || undefined,
   }));
   for (const i of past) out.push({ text: `${i.name}  ${fill(t.ago, -i.days)}`, color: "gray" });
   for (const i of items.filter((i) => i.bad)) out.push({ text: fill(t.bad, i.bad), color: "orange" });

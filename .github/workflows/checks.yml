@@ -1,5 +1,8 @@
-# The two scripted checks of AGENTS.md, on every pull request. They run the pull request's plugin
-# code on GitHub's Windows machine with a read-only token and no secrets.
+# The scripted checks of AGENTS.md, on every pull request, on GitHub's Linux machine with a
+# read-only token and no secrets. "static" reads the files (tools/check.py); "dynamic" runs the
+# plugin: main.js in PecoFence's own plugin host with fake host functions (pecofence-plugin-check,
+# built from PecoFence at the commit below), and a web plugin's page in headless Chromium with
+# the network cut off (tools/web-check.py).
 name: checks
 on:
   pull_request:
@@ -9,61 +12,102 @@ permissions:
 concurrency:
   group: checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+env:
+  # The PecoFence commit whose crates/plugin-check the run check uses. Raise it when PecoFence's
+  # plugin host changes.
+  PECOFENCE_COMMIT: 70b71a07cb042409c4153da39d720af6976466a3
+  PLAYWRIGHT_VERSION: 1.65.2
 
 jobs:
   static:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     outputs:
       plugin: ${{ steps.which.outputs.plugin }}
+      layer: ${{ steps.which.outputs.layer }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Which plugin
         id: which
-        shell: pwsh
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          $files = @(git diff --name-only $env:BASE HEAD)
-          "Changed: $($files -join ', ')"
-          $ids = @($files | ForEach-Object { if ($_ -match '^plugins/([^/]+)/[^/]+$') { $Matches[1] } else { '<outside>' } } | Sort-Object -Unique)
-          if ($ids.Count -ne 1 -or $ids[0] -eq '<outside>') {
-            '::error::A pull request changes the files of one plugin folder and nothing else (AGENTS.md section 1).'
+          files=$(git diff --name-only "$BASE" HEAD)
+          echo "Changed: $files"
+          ids=$(printf '%s\n' "$files" | awk -F/ '$1=="plugins" && NF>=3 {print $2; next} {print "<outside>"}' | sort -u)
+          if [ "$(printf '%s\n' "$ids" | wc -l)" -ne 1 ] || [ "$ids" = "<outside>" ]; then
+            echo "::error::A pull request changes the files of one plugin folder and nothing else (AGENTS.md section 1)."
             exit 1
-          }
-          "plugin=$($ids[0])" >> $env:GITHUB_OUTPUT
-      - name: Static check (tools/check.ps1)
-        shell: powershell
+          fi
+          echo "plugin=$ids" >> "$GITHUB_OUTPUT"
+          echo "layer=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8-sig")).get("layer", "light"))' "plugins/$ids/plugin.json" 2>/dev/null || echo light)" >> "$GITHUB_OUTPUT"
+      - name: Static check (tools/check.py)
         env:
           PLUGIN: ${{ steps.which.outputs.plugin }}
           BASE: ${{ github.event.pull_request.base.sha }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
-          $out = & powershell -NoProfile -File tools/check.ps1 -Plugin "plugins/$env:PLUGIN" -Base $env:BASE -PrAuthor $env:AUTHOR
-          $code = $LASTEXITCODE
-          $out
-          @('### Static check', '```', $out, '```') | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          set +e
+          out=$(python3 tools/check.py "plugins/$PLUGIN" --base "$BASE" --pr-author "$AUTHOR")
+          code=$?
+          echo "$out"
+          printf '### Static check\n```\n%s\n```\n' "$out" >> "$GITHUB_STEP_SUMMARY"
           exit $code
 
   dynamic:
     needs: static
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    env:
+      PLUGIN: ${{ needs.static.outputs.plugin }}
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@v4
-      - name: Run the plugin (tools/run.ps1)
-        shell: powershell
+      - uses: actions/checkout@v4
+        with:
+          repository: DayuanJiang/PecoFence
+          ref: ${{ env.PECOFENCE_COMMIT }}
+          path: pecofence
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            pecofence/target
+          key: plugin-check-${{ env.PECOFENCE_COMMIT }}
+      - name: Build pecofence-plugin-check
         env:
-          PLUGIN: ${{ needs.static.outputs.plugin }}
+          # A quick build: the release profile's whole-program optimisation is for the app.
+          CARGO_PROFILE_RELEASE_LTO: 'false'
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+        run: cargo build --release --locked -p pecofence-plugin-check --manifest-path pecofence/Cargo.toml
+      - name: Run main.js (pecofence-plugin-check)
         run: |
-          $out = & powershell -NoProfile -File tools/run.ps1 -Plugin "plugins/$env:PLUGIN" -Seconds 120 -Json run.json
-          $code = $LASTEXITCODE
-          $out
-          @('### Run check', '```', $out, '```') | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          set +e
+          out=$(pecofence/target/release/pecofence-plugin-check "plugins/$PLUGIN" --seconds 60 --json run.json)
+          code=$?
+          echo "$out"
+          printf '### Run check\n```\n%s\n```\n' "$out" >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+      - name: Install headless Chromium
+        if: needs.static.outputs.layer == 'web'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check "playwright==$PLAYWRIGHT_VERSION"
+          "$RUNNER_TEMP/venv/bin/playwright" install --with-deps chromium-headless-shell
+      - name: Run index.html (tools/web-check.py)
+        if: needs.static.outputs.layer == 'web'
+        run: |
+          set +e
+          out=$("$RUNNER_TEMP/venv/bin/python" tools/web-check.py "plugins/$PLUGIN" --seconds 20 --json web.json)
+          code=$?
+          echo "$out"
+          printf '### Web check\n```\n%s\n```\n' "$out" >> "$GITHUB_STEP_SUMMARY"
           exit $code
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: run-result
-          path: run.json
+          path: |
+            run.json
+            web.json
           if-no-files-found: ignore

@@ -2,7 +2,8 @@
 
 **What the plugin does** (or what changed):
 
-**Self-check** (last lines of `tools\check.ps1` and `tools\run.ps1`, see AGENTS.md section 7):
+**Self-check** (last lines of `tools/check.py`, `pecofence-plugin-check` and, for a web plugin,
+`tools/web-check.py`; see AGENTS.md section 8):
 
 ```
 ```

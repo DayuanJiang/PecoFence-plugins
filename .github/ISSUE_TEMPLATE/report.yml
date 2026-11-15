@@ -14,6 +14,6 @@ body:
     id: what
     attributes:
       label: What it does wrong
-      description: What you saw, and the lines of main.ps1 if you know them.
+      description: What you saw, and the file and lines (main.js, index.html, ...) if you know them.
     validations:
       required: true

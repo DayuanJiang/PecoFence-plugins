@@ -1,4 +1,6 @@
-# Publishes index.json, the list PecoFence reads, on the branch "index". A merge made by the
+# Publishes the feed PecoFence reads on the branch "index": index.json, its Ed25519 signature
+# index.json.sig (private key in the secret INDEX_SIGNING_KEY) and <commit>/plugins/<id>/<files>,
+# the layout the project website copies for PecoFence's third address. A merge made by the
 # automation starts no other workflow, so this also runs every hour.
 name: index
 on:
@@ -17,22 +19,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build index.json
-        shell: pwsh
-        run: ./tools/build-index.ps1 -Commit $env:GITHUB_SHA -Out "$env:RUNNER_TEMP/index.json"
+      - name: Build and sign index.json
+        env:
+          INDEX_SIGNING_KEY: ${{ secrets.INDEX_SIGNING_KEY }}
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check cryptography
+          "$RUNNER_TEMP/venv/bin/python" tools/build-index.py --commit "$GITHUB_SHA" --out "$RUNNER_TEMP/feed" --require-signature
       - name: Publish when it changed
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           current=$(gh api "repos/$REPO/contents/index.json?ref=index" --jq .content 2>/dev/null | base64 -d 2>/dev/null || true)
-          if [ "$current" = "$(cat "$RUNNER_TEMP/index.json")" ]; then echo "index.json unchanged"; exit 0; fi
-          cd "$RUNNER_TEMP"
-          mkdir publish && cp index.json publish/ && cd publish
+          if [ "$current" = "$(cat "$RUNNER_TEMP/feed/index.json")" ]; then echo "index.json unchanged"; exit 0; fi
+          cd "$RUNNER_TEMP/feed"
           git init -q -b index
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.json
+          git add -A
           git commit -q -m "index.json for $GITHUB_SHA"
           git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" index
           echo "published"
