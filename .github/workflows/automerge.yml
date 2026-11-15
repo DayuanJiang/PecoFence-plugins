@@ -1,0 +1,30 @@
+# Turns on auto-merge for a pull request that changes one plugin folder and nothing else. GitHub
+# then merges it once the required checks pass and Copilot approves (the ruleset on main).
+# This job never checks out or runs the pull request's code.
+name: automerge
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable:
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge for a one-plugin change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          echo "Changed: $files"
+          dirs=$(printf '%s\n' "$files" | awk -F/ '$1=="plugins" && NF==3 {print $2; next} {print "<outside>"}' | sort -u)
+          if [ "$(printf '%s\n' "$dirs" | wc -l)" -ne 1 ] || [ "$dirs" = "<outside>" ]; then
+            echo "Not a change to one plugin folder: no auto-merge."
+            exit 0
+          fi
+          gh pr merge "$PR" --repo "$REPO" --auto --squash

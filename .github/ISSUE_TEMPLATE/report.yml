@@ -1,0 +1,19 @@
+name: Report a plugin
+description: A plugin breaks the rules of AGENTS.md (safety, privacy, or it misbehaves).
+title: "Report <id>"
+labels: [report]
+body:
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin id
+      placeholder: countdown
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it does wrong
+      description: What you saw, and the lines of main.ps1 if you know them.
+    validations:
+      required: true

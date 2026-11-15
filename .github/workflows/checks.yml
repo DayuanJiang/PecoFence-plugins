@@ -1,0 +1,69 @@
+# The two scripted checks of AGENTS.md, on every pull request. They run the pull request's plugin
+# code on GitHub's Windows machine with a read-only token and no secrets.
+name: checks
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    runs-on: windows-latest
+    outputs:
+      plugin: ${{ steps.which.outputs.plugin }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Which plugin
+        id: which
+        shell: pwsh
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $files = @(git diff --name-only $env:BASE HEAD)
+          "Changed: $($files -join ', ')"
+          $ids = @($files | ForEach-Object { if ($_ -match '^plugins/([^/]+)/[^/]+$') { $Matches[1] } else { '<outside>' } } | Sort-Object -Unique)
+          if ($ids.Count -ne 1 -or $ids[0] -eq '<outside>') {
+            '::error::A pull request changes the files of one plugin folder and nothing else (AGENTS.md section 1).'
+            exit 1
+          }
+          "plugin=$($ids[0])" >> $env:GITHUB_OUTPUT
+      - name: Static check (tools/check.ps1)
+        shell: powershell
+        env:
+          PLUGIN: ${{ steps.which.outputs.plugin }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          $out = & powershell -NoProfile -File tools/check.ps1 -Plugin "plugins/$env:PLUGIN" -Base $env:BASE -PrAuthor $env:AUTHOR
+          $code = $LASTEXITCODE
+          $out
+          @('### Static check', '```', $out, '```') | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          exit $code
+
+  dynamic:
+    needs: static
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the plugin (tools/run.ps1)
+        shell: powershell
+        env:
+          PLUGIN: ${{ needs.static.outputs.plugin }}
+        run: |
+          $out = & powershell -NoProfile -File tools/run.ps1 -Plugin "plugins/$env:PLUGIN" -Seconds 120 -Json run.json
+          $code = $LASTEXITCODE
+          $out
+          @('### Run check', '```', $out, '```') | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          exit $code
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: run-result
+          path: run.json
+          if-no-files-found: ignore

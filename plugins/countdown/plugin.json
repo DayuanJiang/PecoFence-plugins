@@ -1,0 +1,13 @@
+{
+  "id": "countdown",
+  "version": "1.0.0",
+  "name": { "en": "Countdown", "zh-CN": "倒数日" },
+  "description": {
+    "en": "Days left until the dates you choose. Click a row to edit the list.",
+    "zh-CN": "离你选的日子还有几天。点一行就能编辑这份清单"
+  },
+  "author": "DayuanJiang",
+  "minPecoFence": "0.4.0",
+  "streamable": false,
+  "permissions": { "network": [], "clipboard": "none", "files": "data", "run": false }
+}
