@@ -13,8 +13,9 @@ concurrency:
   group: checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 env:
-  # The PecoFence commit whose crates/plugin-check the run check uses. Raise it when PecoFence's
-  # plugin host changes.
+  # The PecoFence commit whose crates/plugin-check the run check uses. It must be a commit pushed
+  # to DayuanJiang/PecoFence that has the plugin host PecoFence ships (the owner sets it after
+  # pushing PecoFence; README.md lists it). Raise it when PecoFence's plugin host changes.
   PECOFENCE_COMMIT: 88a52ae2dbbf7f55cb0a82070743ee643bbead0f
   PLAYWRIGHT_VERSION: 1.65.2
 

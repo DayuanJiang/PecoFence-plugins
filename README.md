@@ -12,3 +12,15 @@ requests are checked and merged automatically when they pass.
 Plugins are JavaScript that PecoFence runs in a fence: a small engine inside PecoFence, or a web
 page. A plugin can do only what its manifest lists, and PecoFence shows that list before you
 install it. Every version is checked and reviewed automatically before it reaches the list.
+
+## For the maintainer
+
+What the automation needs from the repository's owner, outside the files here:
+
+- `.github/workflows/checks.yml`, `PECOFENCE_COMMIT`: a commit pushed to `DayuanJiang/PecoFence`
+  that has the plugin host PecoFence ships and `crates/plugin-check`. Set it after pushing
+  PecoFence, and raise it whenever the plugin host changes; a commit that is not pushed makes
+  every run check fail.
+- The Actions secret `INDEX_SIGNING_KEY` (from `tools/make-key.py`), whose public key is in
+  PecoFence's `crates/core/src/plugins.rs`.
+- The AWS role `pecofence-plugins-review`, which only `review.yml` on `main` can assume.
