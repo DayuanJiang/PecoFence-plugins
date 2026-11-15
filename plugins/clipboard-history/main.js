@@ -193,8 +193,7 @@ async function add(found) {
       delete e.text;
     }
   } else if (e.kind === "files") {
-    const n = e.paths.length;
-    e.line = n > 1 ? `${e.paths[0].split(/[\\/]/).pop()} (+${n - 1})` : e.paths[0];
+    e.line = oneLine(e.paths.slice(0, 20).join("; "));
     e.preview = cut(e.paths.slice(0, 20).join("\n"));
   }
   entries.unshift(e);
