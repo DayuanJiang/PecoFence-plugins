@@ -28,6 +28,9 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 - `<id>`: lower-case letters, digits and `-`, 3 to 40 characters, never changed after it is merged.
 - Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 200 KB, any other file at
   most 1 MB, the whole folder at most 5 MB and 100 files.
+- File and folder names: letters, digits, `.`, `_` and `-`, at most 64 characters, not starting
+  or ending with a dot, and not a name Windows keeps for a device (`con`, `prn`, `aux`, `nul`,
+  `com1` to `com9`, `lpt1` to `lpt9`, also with an extension such as `aux.js`).
 - Text files are UTF-8. A web plugin's files have these extensions only: `.html`, `.js`, `.css`,
   `.json`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.woff2`. Nothing else: no programs,
   libraries in binary form, archives or WebAssembly.
@@ -145,9 +148,12 @@ thread:
 | `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
 | `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
 
-A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting with a dot.
-The data files are shared by all fences of the plugin, at most 200 MB in all, and deleted when it
-is uninstalled; deleting a fence leaves them.
+A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting or ending
+with a dot, and not a device name (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`,
+also with an extension such as `nul.txt`). A data file holds at most 20 MB: `pf.data.write` of
+more, and `pf.data.read` of a larger file, reject. `pf.data.write` replaces the file whole, so a
+read never finds half of it. The data files are shared by all fences of the plugin, at most 200 MB
+in all, and deleted when it is uninstalled; deleting a fence leaves them.
 
 **Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
 an `Error` at once that says what it needs, such as `http.get needs an https address with
@@ -163,6 +169,13 @@ queue many calls (removing 30 files) instead of making them all at once.
 busy`, the data folder past 200 MB, a picture larger than 4096 × 4096 pixels, `pf.run needs
 允许插件使用 Windows 底层功能 ...` while the switch is off, a program that ran longer than 30
 seconds (it is ended), a path outside the picked folders.
+
+**Addresses are read strictly.** After `https://` (for `pf.open` also `http://`) comes the host,
+an optional `:port`, then `/`, `?`, `#` or the end. The host is letters, digits, `.` and `-` (an
+international name in its `xn--` form); capitals are read as small letters. An address with a user
+name (`@`), a backslash, a space or a control character before its path is refused, even when the
+host after it is declared, and a redirect to such an address rejects with `redirect refused`.
+PecoFence requests or opens exactly the address it checked.
 
 **Requests.** PecoFence follows redirects (301, 302, 303, 307, 308) one hop at a time, at most 5,
 and checks each new host against `network`. A 303, and a 301 or 302 answering a `post`, goes on
@@ -191,10 +204,13 @@ before the handler's first `await`.
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits: it has 1 second, and the calls it makes then still run | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
 
-An error that escapes a handler or a timer ends that run, and the rest of the run is lost; what
-PecoFence does after that is not part of the interface (it may stop the plugin, or only write the
-error to its log). Catch the errors you expect. A Promise that rejects with nobody to catch it is
-left alone.
+An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
+PecoFence writes it to its log (the plugin, the event, the message and the first line of the
+stack) and the plugin goes on: its timers keep running and the next events come. Only an error in
+the top level of `main.js`, while the script first runs, stops the plugin as a limit does
+(section 3.4), and the fence shows the error. Catch the errors you expect: a handler that fails
+each time leaves its fence without the update it was making. A Promise that rejects with nobody
+to catch it is left alone.
 
 ### 3.3 The view
 

@@ -28,6 +28,8 @@ MAGIC = {".png": b"\x89PNG\r\n\x1a\n", ".jpg": b"\xff\xd8\xff", ".jpeg": b"\xff\
          ".gif": b"GIF8", ".webp": b"RIFF", ".woff2": b"wOF2"}
 VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}$")
+# AGENTS.md section 1: a file or folder name, as PecoFence checks it (no Windows device names).
+NAME = re.compile(r"(?i)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)")
 HOST = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$")
 # XML namespaces name this host without connecting to it.
 NAMESPACE_HOSTS = {"www.w3.org"}
@@ -112,8 +114,9 @@ def check_files(root, layer):
         elif path.is_dir():
             if layer != "web":
                 fail(f"{rel}/: a light plugin has no sub-folders")
-        elif any(part.startswith(".") or not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", part) for part in rel.split("/")):
-            fail(f"{rel}: names are letters, digits, '.', '_' and '-', not starting with a dot")
+        elif not all(NAME.fullmatch(part) for part in rel.split("/")):
+            fail(f"{rel}: names are letters, digits, '.', '_' and '-', not starting or ending with a dot, "
+                 "and no Windows device name (con, prn, aux, nul, com1 to com9, lpt1 to lpt9)")
         else:
             files[rel] = path.read_bytes()
             total += len(files[rel])
@@ -285,6 +288,9 @@ def check_code(files, p, layer):
             if BUILT_URL.search(text):
                 warn(f"{rel} builds an address at run time: the run check and the review check where it goes")
         for mt in URL.finditer(text):
+            if "@" in mt.group(1):
+                line = text.count("\n", 0, mt.start()) + 1
+                fail(f"{rel}:{line} has a user name (@) in the address {mt.group(0)}: PecoFence refuses it (AGENTS.md 3.1)")
             host = mt.group(1).split("@")[-1].split(":")[0].lower().rstrip(".")
             if "$" in host or "{" in host or host in NAMESPACE_HOSTS:
                 continue

@@ -35,8 +35,10 @@ def entry(folder, disabled):
     files = []
     for path in sorted(p for p in folder.rglob("*") if p.is_file()):
         data, name = path.read_bytes(), path.relative_to(folder).as_posix()
-        # The same names tools/check.py allows: no "..", no leading "/", no backslash or drive.
-        if not all(re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]{0,63}", part) for part in name.split("/")):
+        # The same names tools/check.py allows: no "..", no leading "/", no backslash or drive, no
+        # trailing dot and no Windows device name (PecoFence drops an entry with such a file).
+        if not all(re.fullmatch(r"(?i)(?!(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$))[a-z0-9_-][a-z0-9._-]{0,63}(?<!\.)", part)
+                   for part in name.split("/")):
             sys.exit(f"{folder.name}: the file name {name!r} is not allowed")
         files.append({"name": name, "size": len(data),
                       "sha256": hashlib.sha256(data).hexdigest()})

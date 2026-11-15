@@ -30,13 +30,20 @@ STUB = """
   const P = __PERMS__, record = (name, args, refused) => window.__pfRecord(name, JSON.stringify(args), refused || "");
   const handlers = {}, data = new Map();
   const clip = ["none", "write", "read", "readwrite"].indexOf(P.clipboard || "none");
-  const host = (u) => { try { return new URL(u).hostname; } catch (e) { return ""; } };
+  // As PecoFence reads an address (AGENTS.md 3.1): a user name, a backslash, a space or a control
+  // character before the path is refused, whatever host follows.
+  const host = (u) => {
+    const authority = /^https?:[/][/]([^/?#]*)/i.exec(String(u));
+    if (!authority || /[@\\s]/.test(authority[1]) || [...authority[1]].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 92 || c.charCodeAt(0) === 127)) return "";
+    try { return new URL(u).hostname; } catch (e) { return ""; }
+  };
   const call = (name, args, refuse, answer) => {
     const why = refuse ? refuse() : "";
     record(name, args, why);
     return why ? Promise.reject(new Error(why)) : Promise.resolve(answer);
   };
-  const needHost = (u, list, field) => () => list.includes(host(u)) ? "" : `${host(u)} is not in permissions.${field}`;
+  const needHost = (u, list, field) => () => !host(u) ? "an address PecoFence refuses (AGENTS.md 3.1)"
+    : list.includes(host(u)) ? "" : `${host(u)} is not in permissions.${field}`;
   const needClip = (n) => () => clip >= n ? "" : "permissions.clipboard does not allow it";
   const needFlag = (f) => () => P[f] ? "" : `permissions.${f} is not true`;
   const offline = (u, list) => () => needHost(u, list, "network")() || "offline (the check has no network)";
