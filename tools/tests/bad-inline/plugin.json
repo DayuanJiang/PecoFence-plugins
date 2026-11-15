@@ -1,0 +1,6 @@
+{
+  "id": "bad-inline", "version": "1.0.0", "api": 1, "layer": "web",
+  "name": { "en": "Bad: inline script" },
+  "description": { "en": "Test plugin for the checks: a script written into index.html and a file name with capitals." },
+  "author": "DayuanJiang", "minPecoFence": "0.5.0", "permissions": {}
+}
