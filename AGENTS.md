@@ -319,8 +319,10 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
 2. **Only what the manifest declares:** every host, link, clipboard use, program, folder and
    notice. Every address written in the code has its host in `network` or `links`.
 3. **A web page loads nothing from the network** but data from the hosts in `network`: no
-   scripts, styles, fonts or pictures from other sites, no `<iframe>`, no `RTCPeerConnection` or
-   other WebRTC (it reaches any host).
+   scripts, styles, fonts or pictures from other sites, no `<iframe>` (also none made in a script)
+   and nothing that reaches into a frame's window (`contentWindow`, `contentDocument`, `frames[ ]`),
+   no `RTCPeerConnection` or other WebRTC (it reaches any host), no `dns-prefetch` or
+   `preconnect` (the browser connects to those hosts ahead, past the CSP).
 4. **Nothing sent in secret.** Send only what the plugin's visible purpose needs, and say in
    `README.md` what is sent and to which host. Never send the user's files, file names, folder
    contents, clipboard, typed text or computer details unless that is the plugin's stated purpose.

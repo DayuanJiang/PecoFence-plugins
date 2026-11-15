@@ -1,0 +1,6 @@
+{
+  "id": "bad-frame", "version": "1.0.0", "api": 1, "layer": "web",
+  "name": { "en": "Bad: frame and preconnect" },
+  "description": { "en": "Test plugin for the checks: reaches WebRTC through a blank frame, connects ahead to undeclared hosts and writes a user name into an address." },
+  "author": "DayuanJiang", "minPecoFence": "0.5.0", "permissions": { "network": ["api.github.com"] }
+}

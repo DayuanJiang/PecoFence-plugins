@@ -58,6 +58,14 @@ EXTERNAL = [
     (r"url\(\s*['\"]?\s*(https?:)?//", "loads a style resource from the network (url())"),
     (r"@import\s+(url\()?\s*['\"]?\s*(https?:)?//", "imports a style from the network"),
 ]
+# Every code file of a web plugin (AGENTS.md 4 and 5.3): a frame's own window has WebRTC and pf
+# again, and the browser connects ahead to dns-prefetch and preconnect hosts whatever the CSP says.
+WEB_CODE = [
+    (r"\b(contentWindow|contentDocument)\b|(?<![\w$.])frames\s*\[|\b(window|self|top|parent|globalThis)\s*\.\s*frames\b",
+     "reaches into a frame (contentWindow, contentDocument or frames[ ]; an array of your own needs another name)"),
+    (r"\bcreateElement(NS)?\s*\([^)]*['\"`](iframe|frame|object|embed)['\"`]", "makes a frame or embedded object"),
+    (r"(?i)\b(dns-prefetch|preconnect)\b", "asks the browser to connect ahead to a host (dns-prefetch or preconnect)"),
+]
 # pf calls and the permission each needs.
 USES = [
     ("network", r"\bpf\.http\.(get|post)\b", "pf.http"),
@@ -272,7 +280,8 @@ def check_code(files, p, layer):
             long = [i + 1 for i, line in enumerate(lines) if len(line) > 1000]
             if long:
                 fail(f"{rel}:{long[0]} has a line of {len(lines[long[0] - 1])} characters: minified or generated code is not readable")
-            for pattern, what in FORBIDDEN + (EXTERNAL if layer == "web" and ext != ".js" else []):
+            web = (EXTERNAL if ext != ".js" else []) + WEB_CODE if layer == "web" else []
+            for pattern, what in FORBIDDEN + web:
                 for mt in re.finditer(pattern, text):
                     fail(f"{rel}:{text.count(chr(10), 0, mt.start()) + 1} {what}")
                     break
