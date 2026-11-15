@@ -153,9 +153,9 @@ is uninstalled; deleting a fence leaves them.
 an `Error` at once that says what it needs, such as `http.get needs an https address with
 example.com in permissions.network`, `clipboard.text needs permissions.clipboard read` or
 `pf.open works only in a click or dblclick handler`. So does a call past the calls a plugin may
-have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`. An error
-that escapes a handler stops the plugin (section 3.4), so put calls that can be refused in `try`,
-and queue many calls (removing 30 files) instead of making them all at once.
+have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`. Put calls
+that can be refused in `try` (an error that escapes ends the handler there, section 3.2), and
+queue many calls (removing 30 files) instead of making them all at once.
 
 **Failed calls reject.** A call PecoFence tried and could not do rejects its Promise with an
 `Error` whose message says why: no answer from the network, an answer larger than 1 MB, more than
@@ -191,8 +191,10 @@ before the handler's first `await`.
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits: it has 1 second, and the calls it makes then still run | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
 
-An error thrown in a handler or a timer stops the plugin; a Promise that rejects with nobody to
-catch it does not.
+An error that escapes a handler or a timer ends that run, and the rest of the run is lost; what
+PecoFence does after that is not part of the interface (it may stop the plugin, or only write the
+error to its log). Catch the errors you expect. A Promise that rejects with nobody to catch it is
+left alone.
 
 ### 3.3 The view
 
@@ -267,8 +269,7 @@ until it closes.
 
 Each fence has its own engine: 8 MB of memory, 50 ms of JavaScript per run (a start, an event, a
 timer or an answer, with the Promise jobs it queues), and 200 ms of JavaScript per second. A
-plugin past a limit, or one whose handler throws, is stopped: the fence shows why and a 重新启动
-button. It starts again by itself after 5 seconds; after its third stop within an hour, only
+plugin past a limit is stopped: the fence shows why and a 重新启动 button. It starts again by itself after 5 seconds; after its third stop within an hour, only
 重新启动 starts it. Do slow work in small steps over timers.
 
 ## 4. The web layer: `index.html`
