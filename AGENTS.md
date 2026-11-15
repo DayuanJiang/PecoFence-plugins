@@ -79,8 +79,9 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
 ## 3. The light layer: `main.js`
 
-*Written by hand from PecoFence's plan for `crates/plugin-host`; it becomes generated from that
-crate when its interface is final.*
+*Written by hand from PecoFence's code (`crates/plugin-host` for `pf` and the view, the app's
+`light_host.rs` for the answers), 2026-11-15. It becomes generated from that code when the
+interface is final.*
 
 `main.js` is plain JavaScript (ES2023, no modules). It runs once when the fence first shows, then
 lives on events and timers. There is no `require`, `fetch`, `setTimeout`, DOM, `eval` or
@@ -97,75 +98,178 @@ function draw() {
 
 ### 3.1 `pf`
 
-Calls that reach Windows or the network return a Promise; the others return at once.
+These answer at once:
 
 | Call | What it does |
 |---|---|
-| `pf.on(event, fn)` | `fn(data)` runs on the event (section 3.2) |
-| `pf.show(view)` | what the fence shows (section 3.3); at most 10 a second take effect, the last one wins |
-| `pf.every(seconds, fn, { align })` | repeats `fn`; at least 1 second; `align: "second"` or `"minute"` runs it just after the clock's whole second or minute. Returns an id |
-| `pf.after(seconds, fn)` | runs `fn` once. Returns an id |
-| `pf.cancel(id)` | stops a timer. Timers wait while the fence is hidden (unless `background`); at most 20 |
+| `pf.on(event, fn)` | `fn(data)` runs on the event (section 3.2); several handlers of one event run in the order they were added |
+| `pf.show(view)` | what the fence shows (section 3.3). At most 10 a second take effect; the last one wins. Until the first `pf.show` after a start, the fence shows the view the plugin showed last time |
+| `pf.every(seconds, fn, { align })` | repeats `fn`, at most once a second. `align: "second"` or `"minute"` rounds the step up to whole seconds or minutes and runs `fn` just after the clock turns. Returns a number, the timer's id |
+| `pf.after(seconds, fn)` | runs `fn` once, at least 1 second later. Returns an id |
+| `pf.cancel(id)` | stops a timer. Timers wait while the fence is hidden (unless `background`). A plugin has at most 20: one more throws a `RangeError` |
 | `pf.time.now()` | milliseconds since 1970, as `Date.now()` |
-| `pf.time.format(ms, kind)` | the time in the user's Windows format: `time`, `seconds`, `date`, `short`, `weekday` |
-| `pf.settings` | this fence's settings, by `key` |
-| `pf.lang`, `pf.theme`, `pf.fence` | the display language (`en`, `zh-CN`, ...), `light` or `dark`, and `{ id, width, height }` of the fence's content in pixels at 100 % |
-| `pf.http.get(url, { headers })`, `pf.http.post(url, { headers, body })` | Promise of `{ status, headers, body }`; only hosts in `network`; PecoFence follows at most 5 redirects and checks each host; answers up to 1 MB; 4 requests at once; the User-Agent names the plugin |
-| `pf.data.read(name)`, `.write(name, text)`, `.list()`, `.remove(name)` | the plugin's own files, shared by all its fences, deleted when it is uninstalled. Names: letters, digits, `.`, `_`, `-`, at most 64, not starting with a dot; 200 MB in all |
-| `pf.clipboard.text()`, `.files()`, `.image()` | needs `read`. Text up to 256 KB (longer text is cut); `image()` saves a PNG into the data files and gives its name; `null` when there is nothing, or when a password manager marked the content private |
-| `pf.clipboard.setText(text)`, `.setFiles(paths)`, `.setImage(name)` | needs `write` |
-| `pf.sys.cpu()`, `.memory()`, `.drives()`, `.ip()`, `.network()`, `.battery()` | the computer's state |
-| `pf.open(url)` | opens an http or https address of a host in `network` or `links` in the browser; only inside a `click` or `dblclick` handler |
-| `pf.openSystem("taskmgr")` | opens Task Manager (the only name for now) |
-| `pf.run(program, args)` | needs `system`; `args` is an array; at most 30 seconds and 1 MB of output; Promise of `{ code, output }` |
-| `pf.folder.pick()`, `.list(path)`, `.read(path)` | needs `folders`; only inside the folder the user picked; files up to 20 MB |
-| `pf.notify(title, body, { sound })` | needs `notify` |
+| `pf.time.format(ms, kind)` | the time as PecoFence's own clock writes it, in the user's Windows region format: `time` (hours and minutes), `seconds` (with seconds), `date` (the long date with the weekday), `short` (the date of a narrow clock, such as `Wed, Nov 4`), `weekday`. Without `kind`, `short`; another kind gives `""` |
+| `pf.settings` | this fence's settings by `key` (the manifest's `default` where the user set nothing); replaced before each `settings` event |
+| `pf.lang` | the display language: `en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt-BR`, `ru` or `it` |
+| `pf.theme` | `light` or `dark` |
+| `pf.fence` | `{ id, width, height }`: the fence's id (text, the same for the fence's whole life) and the size of its content in pixels at 100 %; `width` and `height` change before each `resize` event |
 
-A call the manifest does not allow throws (or rejects) with an error that names the permission.
+These reach Windows or the network. Each returns a Promise that PecoFence answers from a worker
+thread:
+
+| Call | Needs | The Promise resolves to |
+|---|---|---|
+| `pf.http.get(url, { headers })` | an `https://` address whose host is in `network` | `{ status, headers, body }`: the status number (any status: a 404 resolves too), the answer's headers by lower-case name, the body as text (UTF-8) |
+| `pf.http.post(url, { headers, body })` | the same; `body` is text | the same |
+| `pf.data.read(name)` | a data name | the file's text, or `null` when there is no such file |
+| `pf.data.write(name, text)` | a data name | `null`; a value that is not text is written as its JSON |
+| `pf.data.remove(name)` | a data name | `null`, also when there was no such file |
+| `pf.data.list()` | | the names of the plugin's data files, sorted. The folder is the plugin's: every fence of it sees the same files |
+| `pf.clipboard.text()` | `clipboard` `read` or `readwrite` | `{ text, truncated }`, or `null` when the clipboard holds no text or its content is private. `truncated` is `true` when the text was longer than 256 KB (as UTF-8) and was cut there |
+| `pf.clipboard.files()` | the same | an array of the full paths of copied files (as File Explorer copies them), or `null` |
+| `pf.clipboard.image(name)` | the same; `name` a data name, or nothing | the name of the PNG it saved in the data files (`clipboard-<ms>.png` without `name`), or `null` when the clipboard holds no picture |
+| `pf.clipboard.setText(text)` | `clipboard` `write` or `readwrite` | `null` |
+| `pf.clipboard.setFiles(paths)` | the same | `null`: the files are on the clipboard as File Explorer copies them |
+| `pf.clipboard.setImage(name)` | the same; `name` a data name | `null`: the picture in that data file (PNG, JPEG and the other formats Windows reads) is on the clipboard |
+| `pf.sys.cpu()` | | the processor's load in percent (a whole number, 0 to 100) since the last `sys.cpu` call of any plugin (the first call measures 250 ms), or `null` |
+| `pf.sys.memory()` | | the physical memory in use in percent (a whole number, as Task Manager counts it), or `null` |
+| `pf.sys.drives()` | | `[{ letter, free, size }]`: each local drive with a disk in it (`letter` such as `"C"`), its free space and its size in bytes |
+| `pf.sys.ip()` | | the computer's IPv4 address on the network it is connected to (an adapter that is up and has a default gateway; Wi-Fi and cable before VPN), or `null` |
+| `pf.sys.network()` | | `[{ up, gateway, physical, addresses }]`: each network adapter, whether it is up, has a default gateway and is real hardware, and its IPv4 addresses |
+| `pf.sys.battery()` | | `{ percent, plugged }`, or `null` on a computer without a battery |
+| `pf.open(url)` | an `http` or `https` address whose host is in `network` or `links`, called while a `click` or `dblclick` handler runs | `null`: the page opens in the browser |
+| `pf.openSystem("taskmgr")` | the name `taskmgr` (the only one for now) | `null`: Task Manager opens |
+| `pf.run(program, args)` | `program` in `system`, and 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB |
+| `pf.folder.pick()` | `folders` | the path of the folder the user picked (PecoFence remembers it for this fence), or `null` when they cancelled |
+| `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `[{ name, path, folder, size, modified }]`, at most 10,000: `folder` is `true` for a folder, `modified` is in ms since 1970 |
+| `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
+| `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
+
+A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting with a dot.
+The data files are shared by all fences of the plugin, at most 200 MB in all, and deleted when it
+is uninstalled; deleting a fence leaves them.
+
+**Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
+an `Error` at once that says what it needs, such as `http.get needs an https address with
+example.com in permissions.network`, `clipboard.text needs permissions.clipboard read` or
+`pf.open works only in a click or dblclick handler`. So does a call past the calls a plugin may
+have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`. An error
+that escapes a handler stops the plugin (section 3.4), so put calls that can be refused in `try`,
+and queue many calls (removing 30 files) instead of making them all at once.
+
+**Failed calls reject.** A call PecoFence tried and could not do rejects its Promise with an
+`Error` whose message says why: no answer from the network, an answer larger than 1 MB, more than
+5 redirects, a redirect to a host not in `network` (`redirect refused: ...`), `the clipboard is
+busy`, the data folder past 200 MB, a picture larger than 4096 × 4096 pixels, `pf.run needs
+允许插件使用 Windows 底层功能 ...` while the switch is off, a program that ran longer than 30
+seconds (it is ended), a path outside the picked folders.
+
+**Requests.** PecoFence follows redirects (301, 302, 303, 307, 308) one hop at a time, at most 5,
+and checks each new host against `network`. A 303, and a 301 or 302 answering a `post`, goes on
+as a `get` without the body; on another host the `Authorization` and `Cookie` headers are left
+out. The User-Agent is `PecoFence-plugin/<id> <version>`: a `User-Agent` or `Host` header of the
+plugin is left out, as is a header whose value is not text. Windows gives up after 15 seconds
+without a connection and 30 seconds without an answer.
+
+**`pf.open` needs the click.** It works only while a `click` or `dblclick` handler runs: call it
+before the handler's first `await`.
 
 ### 3.2 Events
 
-| Event | `data` |
-|---|---|
-| `start` | none; the first event |
-| `show`, `hide` | none; the fence was shown again, or rolled up, hidden with the desktop, or moved to another virtual desktop |
-| `resize` | `{ width, height }` (also in `pf.fence`) |
-| `click`, `dblclick` | `{ id }` of the row or cell |
-| `change` | `{ id, value }`: a check box (`true` / `false`), a slider (0 to 1), a to-do row |
-| `text` | `{ id, text }`: what the user typed in an `input` |
-| `settings` | the new settings (also in `pf.settings`) |
-| `clipboard` | none; the clipboard changed (needs `read`; private content sends no event) |
-| `timechange` | none; the system time, time zone or region format changed |
-| `stop` | none; the fence goes away or PecoFence quits: you have 1 second |
+| Event | When | `data` |
+|---|---|---|
+| `start` | the fence first shows, or the plugin starts again; always the first event | none |
+| `show`, `hide` | the fence shows again, or it is rolled up, hidden with the desktop, moved to another virtual desktop, or PecoFence pauses. A fence covered by a window still shows. A fence that starts hidden gets `hide` right after `start` | none |
+| `resize` | the fence's content changed size | `{ width, height }` (also in `pf.fence`) |
+| `click` | a click on a row or a cell with an `id` | `{ id }` |
+| `dblclick` | a double-click on a row with an `id`. On a button cell the second click sends `click`, then `dblclick` | `{ id }` |
+| `change` | a check box cell (`true` / `false`), a slider cell (0 to 1), a to-do row's box (`true` / `false`). PecoFence shows the new state at once | `{ id, value }` |
+| `text` | a one-line box closed with Enter or a click elsewhere (Esc sends nothing), or the note changed (edited, ticked, a to-do moved) | `{ id, text }`: the input's `id`, and the box's text or the note's whole text |
+| `settings` | the user changed this fence's settings | the new settings (also in `pf.settings`) |
+| `clipboard` | the clipboard changed, once per copy (100 ms after its last step), also when the plugin itself wrote it; not for content marked private; only with `clipboard` `read` or `readwrite` | none |
+| `timechange` | the system time, the time zone or the region format changed | none |
+| `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits: it has 1 second, and the calls it makes then still run | none |
+| `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
+
+An error thrown in a handler or a timer stops the plugin; a Promise that rejects with nobody to
+catch it does not.
 
 ### 3.3 The view
 
-`pf.show({ rows: [...] })`, at most 300 rows. All text is shown as plain text. A row has any of:
+`pf.show({ rows: [...] })`: rows from the top, at most 300 (the rest are dropped). All text is
+plain text, at most 4,096 characters a text (longer text is cut). **A row with a field of the
+wrong type is left out** and the other rows show: an `id` is text (`"item:5"`, not `5`), `bold`
+is `true` or `false` (not `null`).
 
 | Field | Meaning |
 |---|---|
-| `text`, `short` | the text, and a shorter one for a narrow fence |
+| `text`, `short` | the text, and a shorter one a `fit` row shows when `text` is too wide |
 | `size` | `small`, `normal`, `large`, `xlarge`, `huge`, or `fit` (scaled with the fence, as PecoFence's clock) |
-| `bold`, `color`, `icon`, `tip` | `color`: `red`, `green`, `orange`, `yellow`, `blue`, `purple`, `gray` or `#rrggbb`; `icon`: an emoji or a Segoe Fluent Icons character; `tip`: the tooltip |
-| `id` | makes the row clickable: `click` and `dblclick` get it |
-| `spans` | `[{ text, color, bold }]` pieces of one line in different colors |
-| `blur` | `true` blurs the text or picture until the pointer is on it |
-| `cells` | a row of cells: `{ id, text, icon, check, slider, image, width, align, fill, under }` (buttons, icon buttons, check boxes, sliders) |
-| `image` | the name of a PNG in the data files |
-| `progress` | 0 to 1, a bar |
-| `todo` | `true` / `false`: a check box before the text |
-| `input` | `{ id, type: "note" }`: a note PecoFence edits and keeps; `{ id, type: "line", placeholder }`: a one-line box |
-| `separator` | `true`: a line |
-| `canvas` | `{ height, draw: [...] }` with `{ line }`, `{ rect }`, `{ circle }`, `{ text }`, `{ image }` drawing steps |
-| `chart` | `{ values: [...], color, height }`: a line chart |
+| `bold`, `color` | `color`: `red`, `green`, `orange`, `yellow`, `blue`, `purple`, `gray` or `#rrggbb` |
+| `icon`, `tip` | an emoji or a Segoe Fluent Icons character before the text; the tooltip (`\n` breaks a line) |
+| `id` | makes the row clickable: `click` and `dblclick` get `{ id }` |
+| `spans` | `[{ text, color, bold }]`, at most 64: pieces of one line in their own color and weight, in place of `text` |
+| `blur` | `true`: the text or picture is blurred until the pointer is on it |
+| `todo` | `true` / `false`: a check box before the text; with an `id`, a click on the row sends `change` |
+| `separator` | `true`: a line across the fence |
+| `progress` | 0 to 1: a thin bar under the text |
+| `image`, `height` | a picture in the data files (PNG, JPEG, ...; at most 4096 pixels a side and 20 MB), drawn at most `height` DIPs tall (96 if not given) |
+| `cells` | a row of cells, at most 64 (below) |
+| `chart` | `{ values, color, height }`: a line chart of at most 1,000 numbers |
+| `canvas` | `{ height, draw }`: a drawing as wide as the fence (below) |
+| `input` | `{ type: "note", id }` or `{ type: "line", id, value, placeholder }` (below); `kind` is read as `type` too |
+| `pane` | any text: this row and the rows after it scroll, the rows above it stay in place |
+| `follow` | any text: the row after this one stays in view as rows are added (a log) |
 
-While the user types in an `input`, PecoFence holds back updates and restarts until they finish.
+Pictures, charts and drawings are at most 2,000 DIPs tall.
+
+A cell has any of:
+
+| Cell field | Meaning |
+|---|---|
+| `id` | the cell is a button: a click sends `click` with its `id` |
+| `text`, `icon` | the button's text, or an icon (an emoji or a Segoe Fluent Icons character) in its place |
+| `tip`, `color`, `bold`, `blur` | as for a row |
+| `check` | `true` / `false`: a check box, `text` its label; a click sends `change` |
+| `checked` | `true`: a button that is switched on (its plate stays in the accent color) |
+| `slider` | 0 to 1: a slider; moving it sends `change` |
+| `image`, `height` | a picture from the data files, at most `height` DIPs tall (96 if not given) |
+| `width`, `align` | a fixed width in DIPs, and where the text sits in it: `left`, `center` or `right` |
+| `fill` | `true`: the cell takes the width the other cells leave; text that does not fit ends with "…" |
+| `under` | `true`: the cell sits under the cell before it (two small buttons in a column) |
+
+A drawing's `draw` holds at most 1,000 steps, drawn in order, in DIPs from the canvas' top left:
+
+| Step | Fields |
+|---|---|
+| a line | `line: [x1, y1, x2, y2]`, `color`, `width` |
+| a rectangle | `rect: [x, y, w, h]`, `color` (the outline), `fill`, `width`, `radius` |
+| a circle | `circle: [x, y, r]`, `color`, `fill`, `width` |
+| text | `text`, `at: [x, y]`, `color`, `size`, `bold` |
+| a picture | `image` (a data name), `at: [x, y, w, h]` |
+
+The two inputs:
+
+- `{ input: { type: "note", id } }` makes the fence a note, like PecoFence's own note fences.
+  PecoFence draws the text, edits it in place when the user clicks it, keeps it with the fence in
+  its configuration (backups, export and snapshots carry it), and draws `[ ]` lines as to-dos the
+  user can tick without editing. The plugin gets every change as `text` with the whole text; it
+  cannot set the text. The note takes the whole fence: other rows are not drawn.
+- `{ input: { type: "line", id, value, placeholder } }`: a row with the text `value` (the grey
+  `placeholder` while it is empty). A click on the row opens a one-line box over it, with the
+  input method, as a fence's name box; Enter or a click elsewhere sends `text`, Esc closes it
+  without.
+
+While a note or a one-line box is open, PecoFence holds back restarts and updates of the plugin
+until it closes.
 
 ### 3.4 Limits
 
-Each fence has its own engine: 8 MB of memory, 50 ms per call, 200 ms of JavaScript per second.
-A plugin past a limit is stopped; the fence shows why and a 重新启动 button. Do slow work in
-small steps over timers.
+Each fence has its own engine: 8 MB of memory, 50 ms of JavaScript per run (a start, an event, a
+timer or an answer, with the Promise jobs it queues), and 200 ms of JavaScript per second. A
+plugin past a limit, or one whose handler throws, is stopped: the fence shows why and a 重新启动
+button. It starts again by itself after 5 seconds; after its third stop within an hour, only
+重新启动 starts it. Do slow work in small steps over timers.
 
 ## 4. The web layer: `index.html`
 
@@ -181,7 +285,11 @@ small steps over timers.
   sites, new windows, downloads, other protocols, and WebRTC.
 - While the fence is hidden the page is slowed and, after 30 seconds, paused (unless
   `background`). Stop animations on `hide`.
-- An optional `main.js` runs in the light layer next to the page, with section 3's `pf`.
+- An optional `main.js` runs in the light layer next to the page, with section 3's `pf`. The
+  two pass messages: `pf.post(data)` on one side (JSON, at most 1 MB) is a `message` event
+  with `data` on the other.
+- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message` and
+  `theme` (`light` or `dark`); `pf.theme`, `pf.settings` and `pf.fence` follow them.
 
 ## 5. Hard rules: safety (one failure and the pull request is not merged)
 
