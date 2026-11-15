@@ -6,7 +6,7 @@ script that PecoFence runs and whose printed lines it shows as rows, buttons, sl
 
 Read this whole file before you write or change a plugin. It is also the review standard. Every
 pull request is checked automatically: two scripted checks (`tools/check.ps1`, `tools/run.ps1`) and
-a GitHub Copilot code review that follows this file. A pull request that passes all three is merged
+an automatic review by Claude that follows this file (`tools/review.py`). A pull request that passes all three is merged
 automatically. Run the two checks yourself before you open the pull request (section 7).
 
 ## 1. What a plugin is
@@ -142,9 +142,10 @@ point to the manifest entry that allows it.
 ## 8. Pull requests
 
 - Title `Add <id>` or `Update <id> to <version>`; the body says what the plugin does or what changed.
-- The checks and Copilot comment on what fails. Fix it and push; they run again. When everything
+- The checks report what fails, and the review requests changes with each broken rule. Fix it and
+  push; everything runs again. When everything
   passes, the pull request is merged, and the plugin appears in PecoFence's list within an hour.
-- Ask questions in the pull request. Do not mention the maintainer.
+- Do not mention the maintainer: nobody reads the pull request unless something is wrong.
 
 ## 9. Reports and removal
 
