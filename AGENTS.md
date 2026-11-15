@@ -160,12 +160,12 @@ read never finds half of it. The data files are shared by all fences of the plug
 in all, and deleted when it is uninstalled.
 
 **A fence's own files.** A data file whose name starts with a fence's id and a hyphen
-(`pf.fence.id + "-history.json"`; the id is 36 characters, so 27 are left for the rest) belongs to
-that fence. PecoFence deletes it about 3 seconds after the fence is deleted (its `stop` handler has
-run by then), and at a start for fences no layout holds any more. Name what one fence keeps that
-way; other files stay until the plugin is uninstalled. Undoing the delete, or a snapshot that
-still has the fence, brings the fence back without those files: expect them to be missing, as at
-a first start.
+(`pf.fence.id + "-history.json"`; the id is a UUID of 36 characters, so 27 are left for the rest)
+belongs to that fence. Any data file whose name starts with a UUID and a hyphen counts as a
+fence's file, so start no other name that way. PecoFence deletes such files at its next start
+after their fence is gone for good, when no undo and no snapshot can bring it back. Undoing the
+delete of a fence, or restoring a snapshot that has it, brings it back with its files. Name what
+one fence keeps that way; other files stay until the plugin is uninstalled.
 
 **Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
 an `Error` at once that says what it needs, such as `http.get needs an https address with
@@ -318,6 +318,12 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   from a script through `element.style`), no `data:` or `blob:` addresses for pictures, fonts or
   scripts, no frames, no forms. A CSP the plugin writes itself does not count. The web check
   (section 8) serves the page with this header and fails what it blocks.
+- Each file comes with the type of its extension and `X-Content-Type-Options: nosniff`, so a
+  script runs only from a `.js` file. A path is taken as written: nothing in it is decoded, so a
+  name with `%` finds no file.
+- The page's address is `pecofence-plugin://<id>/index.html`, and it keeps no cookies: keep what
+  it needs in `localStorage` (one for all fences of the plugin, deleted when it is uninstalled)
+  or in `pf.data`.
 - Before the page's scripts run, PecoFence puts a `pf` into the page (`window.pf`) with the names
   and rules of section 3.1, except: every call returns a Promise (`pf.time.now()` too); `pf.on`
   returns nothing; `pf.show`, `pf.every`, `pf.after` and `pf.cancel` are not there (use the
