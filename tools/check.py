@@ -279,7 +279,7 @@ def check_manifest(m, pid):
                 "number": isinstance(default, (int, float)) and not isinstance(default, bool),
                 "choice": default in values}
         if kind in good and not good[kind]:
-            fail(f"{where}.default does not fit its type {kind} (a text has at most 4000 characters)")
+            fail(f"{where}.default does not fit its type {kind}" + (" (at most 4000 characters)" if kind == "text" else ""))
     return p
 
 
