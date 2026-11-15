@@ -47,6 +47,9 @@ function Files {
         foreach ($f in @(Get-ChildItem -LiteralPath $r -Recurse -Force -File -ErrorAction SilentlyContinue)) {
             $path = $f.FullName
             if (@($skip | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count) { continue }
+            # The registry's own files and logs change whenever anything writes the registry; the
+            # registry is checked by the autostart comparison and the static check instead.
+            if ($f.Name -match '^(ntuser|usrclass)\.(dat|ini)') { continue }
             $map[$path] = "$($f.Length)|$($f.LastWriteTimeUtc.Ticks)"
         }
     }
