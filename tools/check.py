@@ -21,9 +21,9 @@ TOP_KEYS = {"id", "version", "api", "layer", "name", "description", "author", "m
 API2 = ["commands", "drop", "launch", "media", "apps"]
 PERM_KEYS = {"network", "links", "clipboard", "background", "system", "folders", "notify", *API2}
 MEDIA = ["none", "read", "control"]
-DROPS = {"files"}
+DROPS = {"files", "text", "links"}
 CLIPBOARD = ["none", "write", "read", "readwrite"]
-SETTING_TYPES = {"text", "number", "switch", "choice"}
+SETTING_TYPES = {"text", "number", "switch", "choice", "secret"}
 SIZES = {"plugin.json": 64 << 10, "README.md": 64 << 10, "main.js": 200 << 10, "screenshot.png": 300 << 10}
 OTHER_SIZE, TOTAL_SIZE, MAX_FILES = 1 << 20, 5 << 20, 100
 WEB_EXT = {".html", ".js", ".css", ".json", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff2"}
@@ -82,8 +82,9 @@ USES = [
     ("launch", r"\bpf\.launch\.", "pf.launch"),
     ("media", r"\bpf\.media\.|\bpf\.on\(\s*['\"`]media['\"`]", "pf.media or the media event"),
     ("control", r"\bpf\.media\.control\s*\(", "pf.media.control"),
-    ("apps", r"\bpf\.apps\.", "pf.apps"),
+    ("apps", r"\bpf\.apps\.|\bpf\.on\(\s*['\"`]apps['\"`]", "pf.apps or the apps event"),
     ("drop", r"\bpf\.on\(\s*['\"`]drop['\"`]", "the drop event"),
+    ("dropfiles", r"\bpf\.drop\.", "pf.drop"),
 ]
 URL = re.compile(r"(?i)\b(?:https?|wss?)://([^\s/\"'`<>()\\?#]+)")
 BUILT_URL = re.compile(r"(?i)['\"`](?:https?|wss?)://['\"`]?\s*\+|`(?:https?|wss?)://\$\{")
@@ -216,11 +217,13 @@ def check_hosts(hosts, field):
     return hosts
 
 
-def check_api2(p, api):
+def check_api2(p, api, settings):
     """AGENTS.md 2: the fields of interface 2, as PecoFence reads them."""
     used = [k for k in API2 if p.get(k) not in (None, [], False, "none")]
+    if isinstance(settings, list) and any(isinstance(s, dict) and s.get("type") == "secret" for s in settings):
+        used.append("secret settings")
     if used and api != 2:
-        fail(f"permissions {', '.join(used)} need api 2")
+        fail(f"{', '.join(used)} need api 2")
     commands = p.get("commands", [])
     ids = [c.get("id") for c in commands if isinstance(c, dict)] if isinstance(commands, list) else []
     if not isinstance(commands, list) or len(commands) > 8 or len(ids) != len(commands) \
@@ -286,7 +289,7 @@ def check_manifest(m, pid):
                  or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I | re.A)) for s in system):
         fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
              "no empty part and no '..') or a name in System32 (x.exe)")
-    check_api2(p, m.get("api"))
+    check_api2(p, m.get("api"), m.get("settings"))
     settings = m.get("settings", [])
     if not isinstance(settings, list) or len(settings) > 20:
         fail("settings is a list of at most 20")
@@ -315,9 +318,10 @@ def check_manifest(m, pid):
         values = [o["value"] for o in options]
         good = {"switch": isinstance(default, bool), "text": isinstance(default, str) and len(default) <= 4000,
                 "number": isinstance(default, (int, float)) and not isinstance(default, bool),
-                "choice": default in values}
+                "choice": default in values, "secret": default is None}
         if kind in good and not good[kind]:
-            fail(f"{where}.default does not fit its type {kind}" + (" (at most 4000 characters)" if kind == "text" else ""))
+            fail(f"{where}.default does not fit its type {kind}" + {"text": " (at most 4000 characters)",
+                 "secret": " (a secret has no default)"}.get(kind, ""))
     return p
 
 
@@ -366,7 +370,8 @@ def check_code(files, p, layer):
             "write": clip in ("write", "readwrite"), "system": bool(p.get("system")),
             "folders": bool(p.get("folders")), "notify": bool(p.get("notify")), "links": bool(network | links),
             "launch": p.get("launch") is True, "media": p.get("media") in ("read", "control"),
-            "control": p.get("media") == "control", "apps": bool(p.get("apps")), "drop": bool(p.get("drop"))}
+            "control": p.get("media") == "control", "apps": bool(p.get("apps")), "drop": bool(p.get("drop")),
+            "dropfiles": "files" in (p.get("drop") or [])}
     used, seen = set(), set()
     for rel, data in files.items():
         ext = pathlib.PurePosixPath(rel).suffix.lower()
@@ -391,7 +396,7 @@ def check_code(files, p, layer):
                     if not have[need]:
                         perm = {"read": "clipboard read or readwrite", "write": "clipboard write or readwrite",
                                 "links": "network or links", "media": "media read or control",
-                                "control": "media control"}.get(need, need)
+                                "control": "media control", "dropfiles": "drop files"}.get(need, need)
                         fail(f"{rel} uses {what}, but plugin.json does not declare permissions.{perm}")
             if BUILT_URL.search(text):
                 warn(f"{rel} builds an address at run time: the run check and the review check where it goes")

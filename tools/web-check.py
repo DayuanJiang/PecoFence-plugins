@@ -61,6 +61,15 @@ STUB = """
   // pf.open works within 1 second after a mouse press in the fence.
   let pressed = -1e9;
   addEventListener("pointerdown", () => (pressed = Date.now()), true);
+  // pf.open, pf.launch.open and pick and pf.media.control: one call per press, within 1 second.
+  const pressNeeded = (name, then) => () => {
+    if (Date.now() - pressed > 1000) return `pf.${name} works only right after a click in the fence`;
+    pressed = -1e9;
+    return then ? then() : "";
+  };
+  const media = ["none", "read", "control"].indexOf(P.media || "none");
+  const needMedia = (n, then) => () => media >= n ? (then ? then() : "") : `permissions.media does not allow it`;
+  const needApps = () => (P.apps || []).length ? "" : "permissions.apps names no program";
   document.addEventListener("securitypolicyviolation", (e) => window.__pfCsp(`${e.effectiveDirective || e.violatedDirective} blocked ${e.blockedURI || "inline"}${e.sourceFile ? " (" + e.sourceFile.split("/").pop() + ":" + e.lineNumber + ")" : ""}`), true);
   for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
     Object.defineProperty(window, k, { value: function () { record("webrtc", [k], "WebRTC is not allowed"); throw new TypeError("WebRTC is not allowed"); } });
@@ -87,12 +96,21 @@ STUB = """
            drives: () => call("sys.drives", [], null, [{ letter: "C", free: 2e11, size: 5e11 }]), ip: () => call("sys.ip", [], null, "192.168.1.20"),
            network: () => call("sys.network", [], null, [{ up: true, gateway: true, physical: true, addresses: ["192.168.1.20"] }]),
            battery: () => call("sys.battery", [], null, { percent: 80, plugged: true }) },
-    open: (u) => call("open", [u], () => Date.now() - pressed > 1000 ? "pf.open works only right after a click in the fence"
-      : needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links")()),
+    open: (u) => call("open", [u], pressNeeded("open", needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links"))),
     openSystem: (n) => call("openSystem", [n], () => n === "taskmgr" ? "" : `${n} is not a known system window`),
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
     folder: { pick: () => call("folder.pick", [], needFlag("folders"), null), list: (p) => call("folder.list", [p], needFlag("folders"), []), read: (p) => call("folder.read", [p], needFlag("folders"), "") },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),
+    // The shapes of AGENTS.md 3.1: one launcher item, the user cancels the dialog, a song plays.
+    launch: { list: () => call("launch.list", [], needFlag("launch"), [{ id: "1", name: "notes.txt", icon: null }]),
+              open: (id) => call("launch.open", [id], pressNeeded("launch.open", needFlag("launch"))),
+              pick: (k) => call("launch.pick", [k], pressNeeded("launch.pick", needFlag("launch")), null),
+              remove: (id) => call("launch.remove", [id], needFlag("launch"), true) },
+    media: { current: () => call("media.current", [], needMedia(1), { title: "A song", artist: "An artist", album: "", playing: true,
+               position: 30, duration: 180, cover: null, app: null }),
+             control: (a) => call("media.control", [a], pressNeeded("media.control", needMedia(2,
+               () => ["playpause", "next", "previous"].includes(a) ? "" : `${a} is not playpause, next or previous`)), true) },
+    apps: { running: () => call("apps.running", [], needApps, []), front: () => call("apps.front", [], needApps, null) },
   };
   for (const k of Object.keys(pf)) if (typeof pf[k] === "object") Object.freeze(pf[k]);
   for (const k of ["lang", "theme", "settings", "fence"]) Object.defineProperty(pf, k, { get: () => state[k], enumerable: true });
@@ -194,6 +212,10 @@ def main():
                  (0.5, lambda: emit("settings", json.dumps(settings))), (0.55, lambda: emit("timechange"))]
         if perms.get("clipboard") in ("read", "readwrite"):
             steps.append((0.58, lambda: emit("clipboard")))
+        if perms.get("media") in ("read", "control"):
+            steps.append((0.58, lambda: emit("media")))
+        if perms.get("apps"):
+            steps.append((0.58, lambda: emit("apps", json.dumps({"running": perms["apps"][:1], "front": None}))))
         rest = None
         for at, step in steps + [(0.6, None)]:
             page.wait_for_timeout(max(0, begun + at * args.seconds - time.monotonic()) * 1000)
