@@ -467,8 +467,8 @@ def check_code(files, p, layer):
                 continue
             if LOOPBACK.fullmatch(host):
                 # This computer: only the ports of permissions.local.loopback (AGENTS.md 3.1).
-                port = authority[len(host):].lstrip(":").split("/")[0]
-                port = int(port) if port.isdigit() else 443 if mt.group(0).lower().startswith(("https", "wss")) else 80
+                port = re.match(r":(\d+)", authority[len(host):])
+                port = int(port[1]) if port else 443 if mt.group(0).lower().startswith(("https", "wss")) else 80
                 seen.add(("loopback", port))
                 if ("loopback", port) not in ports:
                     line = text.count("\n", 0, mt.start()) + 1
