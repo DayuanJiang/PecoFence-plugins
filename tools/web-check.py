@@ -11,13 +11,14 @@ WebRTC, a refused pf call, something the CSP blocks (an inline script or style, 
 script from a file that is no .js, an error or a rejected Promise nobody catches, one of the
 plugin's own files that is not there, or a page that does not load.
 
-Usage: python3 tools/web-check.py plugins/<id> [--seconds 20] [--json result.json]
+Usage: python3 tools/web-check.py plugins/<id> [--seconds 20] [--settings JSON] [--json result.json]
 Needs: pip install playwright && playwright install chromium
 """
 import argparse
 import collections
 import json
 import pathlib
+import re
 import sys
 import time
 import urllib.parse
@@ -57,7 +58,20 @@ STUB = """
   // Reading and writing are two rights: read is 2 (read, readwrite), write is 1 (write, readwrite).
   const needClip = (n) => () => (n === 2 ? clip >= 2 : clip === 1 || clip === 3) ? "" : "permissions.clipboard does not allow it";
   const needFlag = (f) => () => P[f] ? "" : `permissions.${f} is not true`;
-  const offline = (u, list) => () => needHost(u, list, "network")() || "offline (the check has no network)";
+  const folders = { true: 1, read: 1, readwrite: 2 }[P.folders] || 0;
+  const needFolders = (n) => () => folders >= n ? "" : n > 1 ? 'permissions.folders is not "readwrite"' : "permissions.folders does not read";
+  // pf.http: a network host, or a port of permissions.local: loopback on this computer by name,
+  // lan only to the address typed in a device setting (none unless --settings gives one).
+  const L = P.local || {}, devices = __DEVICES__;
+  const offline = (u) => () => {
+    const h = host(u), m = /^(https?):[/][/][^/?#]*?(?::(\d+))?(?:[/?#]|$)/.exec(String(u));
+    const port = m ? +(m[2] || (m[1] === "https" ? 443 : 80)) : 0, on = (c) => (L[c] || []).some((e) => e.port === port);
+    const why = !h ? "an address PecoFence refuses (AGENTS.md 3.1)"
+      : /^(localhost|127[.]\d+[.]\d+[.]\d+)$/.test(h) && on("loopback") ? ""
+      : on("lan") ? (devices.includes(h) ? "" : `rejected: ${h} is not the address of a device typed in this fence's settings`)
+      : needHost(u, P.network || [], "network or a port of permissions.local")();
+    return why || "offline (the check has no network)";
+  };
   // pf.open works within 1 second after a mouse press in the fence.
   let pressed = -1e9;
   // Only a real press counts: one the page dispatches itself (isTrusted false) grants nothing.
@@ -71,6 +85,9 @@ STUB = """
   const media = ["none", "read", "control"].indexOf(P.media || "none");
   const needMedia = (n, then) => () => media >= n ? (then ? then() : "") : `permissions.media does not allow it`;
   const needApps = () => (P.apps || []).length ? "" : "permissions.apps names no program";
+  // The dropped file notes.txt (file 0 of the drop), as pecofence-plugin-check answers.
+  const dropped = (i, answer) => () => !(P.drop || []).includes("files") ? "permissions.drop does not take files"
+    : i === 0 ? "" : "pf.drop: the drop has 1 files";
   document.addEventListener("securitypolicyviolation", (e) => window.__pfCsp(`${e.effectiveDirective || e.violatedDirective} blocked ${e.blockedURI || "inline"}${e.sourceFile ? " (" + e.sourceFile.split("/").pop() + ":" + e.lineNumber + ")" : ""}`), true);
   for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
     Object.defineProperty(window, k, { value: function () { record("webrtc", [k], "WebRTC is not allowed"); throw new TypeError("WebRTC is not allowed"); } });
@@ -85,7 +102,7 @@ STUB = """
     on: (name, fn) => { record("on", [name]); (handlers[name] = handlers[name] || []).push(fn); },
     post: (d) => call("post", [d === undefined ? null : d]),
     time: { now: () => call("time.now", [], null, Date.now()), format: (ms, kind) => call("time.format", [ms, kind], null, new Date(ms).toLocaleString()) },
-    http: { get: (u, o) => call("http.get", [u, o], offline(u, P.network || [])), post: (u, o) => call("http.post", [u, o], offline(u, P.network || [])) },
+    http: { get: (u, o) => call("http.get", [u, o], offline(u)), post: (u, o) => call("http.post", [u, o], offline(u)) },
     data: { read: (n) => call("data.read", [n], null, data.has(n) ? data.get(n) : null),
             write: (n, t) => { const text = typeof t === "string" ? t : JSON.stringify(t); data.set(n, text); return call("data.write", [n, t]); },
             list: () => call("data.list", [], null, [...data.keys()].sort()), remove: (n) => { data.delete(n); return call("data.remove", [n]); } },
@@ -100,7 +117,9 @@ STUB = """
     open: (u) => call("open", [u], pressNeeded("open", needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links"))),
     openSystem: (n) => call("openSystem", [n], () => n === "taskmgr" ? "" : `${n} is not a known system window`),
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
-    folder: { pick: () => call("folder.pick", [], needFlag("folders"), null), list: (p) => call("folder.list", [p], needFlag("folders"), []), read: (p) => call("folder.read", [p], needFlag("folders"), "") },
+    folder: { pick: () => call("folder.pick", [], needFolders(1), null), list: (p) => call("folder.list", [p], needFolders(1), []), read: (p) => call("folder.read", [p], needFolders(1), ""),
+              write: (p, t) => call("folder.write", [p, t], needFolders(2)), mkdir: (p) => call("folder.mkdir", [p], needFolders(2)),
+              trash: (p) => call("folder.trash", [p], needFolders(2)) },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),
     // The shapes of AGENTS.md 3.1: one launcher item, the user cancels the dialog, a song plays.
     launch: { list: () => call("launch.list", [], needFlag("launch"), [{ id: "1", name: "notes.txt", icon: null }]),
@@ -112,6 +131,8 @@ STUB = """
              control: (a) => call("media.control", [a], pressNeeded("media.control", needMedia(2,
                () => ["playpause", "next", "previous"].includes(a) ? "" : `${a} is not playpause, next or previous`)), true) },
     apps: { running: () => call("apps.running", [], needApps, []), front: () => call("apps.front", [], needApps, null) },
+    drop: { text: (i) => call("drop.text", [i], dropped(i), "dropped notes"), read: (i) => call("drop.read", [i], dropped(i), "ZHJvcHBlZCBub3Rlcw=="),
+            save: (i, n) => { data.set(n, "dropped notes"); return call("drop.save", [i, n], dropped(i)); } },
   };
   for (const k of Object.keys(pf)) if (typeof pf[k] === "object") Object.freeze(pf[k]);
   for (const k of ["lang", "theme", "settings", "fence"]) Object.defineProperty(pf, k, { get: () => state[k], enumerable: true });
@@ -138,6 +159,7 @@ def main():
     ap.add_argument("plugin")
     ap.add_argument("--seconds", type=float, default=20)
     ap.add_argument("--json", default="")
+    ap.add_argument("--settings", default="{}", help="the fence's settings as JSON (a device setting: the address typed)")
     args = ap.parse_args()
     root = pathlib.Path(args.plugin).resolve()
     m = json.loads((root / "plugin.json").read_bytes().decode("utf-8-sig"))
@@ -147,7 +169,13 @@ def main():
         return 0
     perms = m.get("permissions", {})
     network = list(perms.get("network", []))
-    settings = {s["key"]: s.get("default") for s in m.get("settings", [])}
+    # As pecofence-plugin-check: --settings sets values; a device setting's is the address a user
+    # typed there, of which PecoFence keeps the host (null until typed).
+    settings = {s["key"]: s.get("default") for s in m.get("settings", [])} | json.loads(args.settings)
+    for s in m.get("settings", []):
+        if s.get("type") == "device" and isinstance(settings.get(s["key"]), str):
+            settings[s["key"]] = re.sub(r"^https?://", "", settings[s["key"]].strip()).split("/")[0].split(":")[0].lower().rstrip(".")
+    devices = [settings[s["key"]] for s in m.get("settings", []) if s.get("type") == "device" and settings.get(s["key"])]
     origin = f"https://{m['id']}.plugins.pecofence"
     headers = {"Content-Security-Policy": csp(network), "X-Content-Type-Options": "nosniff"}
     requests, sockets, calls, refused, errors, blocked, missing = [], [], collections.Counter(), [], [], [], []
@@ -172,7 +200,7 @@ def main():
 
     def record(name, args_json, why):
         calls[name] += 1
-        if why and not why.startswith("offline"):
+        if why and not why.startswith(("offline", "rejected")):
             refused.append(f"{name}({args_json[:100]}): {why}")
 
     def console(msg):
@@ -193,6 +221,7 @@ def main():
         page.expose_function("__pfCsp", lambda what: blocked.append(what))
         page.expose_function("__pfError", lambda what: errors.append(what[:200]))
         stub = STUB.replace("__PERMS__", json.dumps(perms)).replace("__SETTINGS__", json.dumps(settings))
+        stub = stub.replace("__DEVICES__", json.dumps(devices))
         page.add_init_script(stub)
         page.on("websocket", lambda ws: ws.url in sockets or sockets.append(ws.url))
         # An uncaught error and a rejected Promise nobody catches both come here.
@@ -217,6 +246,13 @@ def main():
             steps.append((0.58, lambda: emit("media")))
         if perms.get("apps"):
             steps.append((0.58, lambda: emit("apps", json.dumps({"running": perms["apps"][:1], "front": None}))))
+        # One drop with what the page takes of a file, a text and a link, as pecofence-plugin-check.
+        takes = lambda kind: kind in (perms.get("drop") or [])
+        if perms.get("drop"):
+            steps.append((0.58, lambda: emit("drop", json.dumps({
+                "files": [{"name": "notes.txt", "size": 120, "folder": False}] if takes("files") else [],
+                "text": "a dropped text" if takes("text") else None,
+                "url": "https://example.com/" if takes("links") else None, "row": None}))))
         rest = None
         for at, step in steps + [(0.6, None)]:
             page.wait_for_timeout(max(0, begun + at * args.seconds - time.monotonic()) * 1000)

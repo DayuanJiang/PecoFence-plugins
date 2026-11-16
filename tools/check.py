@@ -18,12 +18,20 @@ LANGS = {"en", "zh-CN", "zh-TW", "ja", "ko", "de", "fr", "es", "pt-BR", "ru", "i
 TOP_KEYS = {"id", "version", "api", "layer", "name", "description", "author", "minPecoFence",
             "permissions", "settings"}
 # Interface 2: a manifest using any of these says api 2 (PecoFence's API2_FIELDS).
-API2 = ["commands", "drop", "launch", "media", "apps"]
+API2 = ["commands", "drop", "launch", "media", "apps", "local"]
 PERM_KEYS = {"network", "links", "clipboard", "background", "system", "folders", "notify", *API2}
 MEDIA = ["none", "read", "control"]
 DROPS = {"files", "text", "links"}
 CLIPBOARD = ["none", "write", "read", "readwrite"]
-SETTING_TYPES = {"text", "number", "switch", "choice", "secret"}
+FOLDERS = ["none", "read", "readwrite"]
+# local: ports of this computer (loopback) and of the device the user types (lan).
+LOCAL = ("loopback", "lan")
+# Ports PecoFence refuses in permissions.local: debuggers and remote administration
+# (plugins.rs, REFUSED_PORTS).
+REFUSED_PORTS = {22, 23, 135, 139, 445, 2375, 2376, 3389, 5037, 5555, 5900, 5985, 5986, 6443, 9222, 9229, 10250}
+# This computer by name, as PecoFence tells a loopback address (plugins.rs, local_class).
+LOOPBACK = re.compile(r"localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}")
+SETTING_TYPES = {"text", "number", "switch", "choice", "secret", "device"}
 SIZES = {"plugin.json": 64 << 10, "README.md": 64 << 10, "main.js": 200 << 10, "screenshot.png": 300 << 10}
 OTHER_SIZE, TOTAL_SIZE, MAX_FILES = 1 << 20, 5 << 20, 100
 WEB_EXT = {".html", ".js", ".css", ".json", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff2"}
@@ -77,6 +85,7 @@ USES = [
     ("write", r"\bpf\.clipboard\.set(Text|Files|Image)\s*\(", "writing the clipboard"),
     ("system", r"\bpf\.run\s*\(", "pf.run"),
     ("folders", r"\bpf\.folder\.", "pf.folder"),
+    ("folderwrite", r"\bpf\.folder\.(write|mkdir|trash)\s*\(", "pf.folder.write, mkdir or trash"),
     ("notify", r"\bpf\.notify\s*\(", "pf.notify"),
     ("links", r"\bpf\.open\s*\(", "pf.open"),
     ("launch", r"\bpf\.launch\.", "pf.launch"),
@@ -205,6 +214,13 @@ def check_files(root, layer):
     return files
 
 
+def folders(p):
+    """permissions.folders as PecoFence ranks it: 0 none (false), 1 read (true), 2 readwrite; None
+    for anything else."""
+    f = p.get("folders", False)
+    return int(f) if isinstance(f, bool) else FOLDERS.index(f) if f in FOLDERS else None
+
+
 def check_hosts(hosts, field):
     if not isinstance(hosts, list) or not all(isinstance(h, str) for h in hosts):
         fail(f"permissions.{field} is a list of host names")
@@ -219,9 +235,11 @@ def check_hosts(hosts, field):
 
 def check_api2(p, api, settings):
     """AGENTS.md 2: the fields of interface 2, as PecoFence reads them."""
-    used = [k for k in API2 if p.get(k) not in (None, [], False, "none")]
-    if isinstance(settings, list) and any(isinstance(s, dict) and s.get("type") == "secret" for s in settings):
-        used.append("secret settings")
+    used = [k for k in API2 if p.get(k) not in (None, [], False, "none") and (k != "local" or local_ports(p) != set())]
+    if folders(p) == 2:
+        used.append("folders readwrite")
+    kinds = [s.get("type") for s in settings if isinstance(s, dict)] if isinstance(settings, list) else []
+    used += [f"{k} settings" for k in ("secret", "device") if k in kinds]
     if used and api != 2:
         fail(f"{', '.join(used)} need api 2")
     commands = p.get("commands", [])
@@ -245,6 +263,34 @@ def check_api2(p, api, settings):
     if not isinstance(apps, list) or len(apps) > 20 or not all(
             isinstance(a, str) and NAME.fullmatch(a) and a.lower().endswith(".exe") for a in apps):
         fail("permissions.apps is a list of at most 20 program names ending in .exe (spotify.exe), no paths")
+    ports = local_ports(p)
+    if ports is None:
+        fail("permissions.local is { loopback: [{ port, app }], lan: [{ port, app }] }: at most 4 ports in all, "
+             "each a number 1 to 65535 once in its list, app the program's name (1 to 40 characters)")
+    elif ports & {(c, port) for c in LOCAL for port in REFUSED_PORTS}:
+        fail(f"permissions.local: the ports {sorted(port for _, port in ports if port in REFUSED_PORTS)} are "
+             "debugging or administration ports PecoFence refuses")
+    if bool(ports and any(c == "lan" for c, _ in ports)) != ("device" in kinds):
+        fail("permissions.local.lan and a setting of type device go together: the user types the device's address there")
+
+
+def local_ports(p):
+    """permissions.local as a set of (class, port), or None when it is not well formed."""
+    local = p.get("local", {})
+    if not isinstance(local, dict) or set(local) - set(LOCAL):
+        return None
+    ports = set()
+    for c in LOCAL:
+        entries = local.get(c, [])
+        if not isinstance(entries, list):
+            return None
+        for e in entries:
+            port, app = (e.get("port"), e.get("app")) if isinstance(e, dict) else (None, None)
+            if type(port) is not int or not 1 <= port <= 65535 or (c, port) in ports \
+                    or not isinstance(app, str) or not app.strip() or len(app) > 40 or set(e) - {"port", "app"}:
+                return None
+            ports.add((c, port))
+    return ports if len(ports) <= 4 else None
 
 
 def check_manifest(m, pid):
@@ -276,9 +322,11 @@ def check_manifest(m, pid):
     check_hosts(p.get("links", []), "links")
     if p.get("clipboard", "none") not in CLIPBOARD:
         fail(f"permissions.clipboard is one of {', '.join(CLIPBOARD)}")
-    for key in ("background", "folders", "notify"):
+    for key in ("background", "notify"):
         if not isinstance(p.get(key, False), bool):
             fail(f"permissions.{key} is true or false")
+    if folders(p) is None:
+        fail('permissions.folders is "none", "read" or "readwrite" (false is none, true is read)')
     system = p.get("system", [])
     # As PecoFence reads it: 5 to 260 bytes (UTF-8) ending in .exe, a name in System32 or a full
     # path whose parts are not empty and not "..", without control characters.
@@ -290,8 +338,6 @@ def check_manifest(m, pid):
         fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
              "no empty part and no '..') or a name in System32 (x.exe)")
     check_api2(p, m.get("api"), m.get("settings"))
-    if m.get("layer") == "web" and p.get("drop"):
-        fail("permissions.drop is for light plugins: a web plugin's fence takes no drops")
     settings = m.get("settings", [])
     if not isinstance(settings, list) or len(settings) > 20:
         fail("settings is a list of at most 20")
@@ -320,10 +366,10 @@ def check_manifest(m, pid):
         values = [o["value"] for o in options]
         good = {"switch": isinstance(default, bool), "text": isinstance(default, str) and len(default) <= 4000,
                 "number": isinstance(default, (int, float)) and not isinstance(default, bool),
-                "choice": default in values, "secret": default is None}
+                "choice": default in values, "secret": default is None, "device": default is None}
         if kind in good and not good[kind]:
             fail(f"{where}.default does not fit its type {kind}" + {"text": " (at most 4000 characters)",
-                 "secret": " (a secret has no default)"}.get(kind, ""))
+                 "secret": " (a secret has no default)", "device": " (a device has no default)"}.get(kind, ""))
     return p
 
 
@@ -350,7 +396,7 @@ def check_update(m, pid, base, pr_author):
         more.append(f"clipboard {oc} to {nc}")
     if m.get("layer") != old.get("layer"):
         more.append(f"layer {old.get('layer')} to {m.get('layer')}")
-    more += [f"{k} turned on" for k in ("background", "folders", "notify", "launch") if n.get(k) and not o.get(k)]
+    more += [f"{k} turned on" for k in ("background", "notify", "launch") if n.get(k) and not o.get(k)]
     # Interface 2, as PecoFence's more_permissions: command ids exactly, drops and apps in any case.
     ids = lambda d: {c.get("id") for c in d.get("commands", []) if isinstance(c, dict)}
     lower = lambda d, k: {str(x).lower() for x in d.get(k, [])}
@@ -359,6 +405,12 @@ def check_update(m, pid, base, pr_author):
     level = lambda d: MEDIA.index(d.get("media")) if d.get("media") in MEDIA else 0
     if level(n) > level(o):
         more.append(f"media {o.get('media', 'none')} to {n.get('media')}")
+    if (folders(n) or 0) > (folders(o) or 0):
+        more.append(f"folders {json.dumps(o.get('folders', False))} to {json.dumps(n.get('folders'))}")
+    # local: each class and port on its own; a port of loopback is another than the same of lan.
+    new_ports = (local_ports(n) or set()) - (local_ports(o) or set())
+    if new_ports:
+        more.append(f"local: {', '.join(f'{c} {port}' for c, port in sorted(new_ports))}")
     if more:
         warn(f"this update asks for more ({'; '.join(more)}): users confirm it before it installs")
     print(f"PASS: update {old['version']} to {m.get('version')}")
@@ -368,9 +420,11 @@ def check_code(files, p, layer):
     """AGENTS.md sections 4 and 5: what the code may do, against the manifest."""
     network, links = set(p.get("network", [])), set(p.get("links", []))
     clip = p.get("clipboard", "none")
-    have = {"network": bool(network), "read": clip in ("read", "readwrite"),
+    ports = local_ports(p) or set()
+    have = {"network": bool(network | ports), "read": clip in ("read", "readwrite"),
             "write": clip in ("write", "readwrite"), "system": bool(p.get("system")),
-            "folders": bool(p.get("folders")), "notify": bool(p.get("notify")), "links": bool(network | links),
+            "folders": bool(folders(p)), "folderwrite": folders(p) == 2,
+            "notify": bool(p.get("notify")), "links": bool(network | links),
             "launch": p.get("launch") is True, "media": p.get("media") in ("read", "control"),
             "control": p.get("media") == "control", "apps": bool(p.get("apps")), "drop": bool(p.get("drop")),
             "dropfiles": "files" in (p.get("drop") or [])}
@@ -396,7 +450,8 @@ def check_code(files, p, layer):
                 if re.search(pattern, text):
                     used.add(need)
                     if not have[need]:
-                        perm = {"read": "clipboard read or readwrite", "write": "clipboard write or readwrite",
+                        perm = {"network": "network or local", "read": "clipboard read or readwrite",
+                                "write": "clipboard write or readwrite", "folderwrite": 'folders "readwrite"',
                                 "links": "network or links", "media": "media read or control",
                                 "control": "media control", "dropfiles": "drop files"}.get(need, need)
                         fail(f"{rel} uses {what}, but plugin.json does not declare permissions.{perm}")
@@ -406,21 +461,36 @@ def check_code(files, p, layer):
             if "@" in mt.group(1):
                 line = text.count("\n", 0, mt.start()) + 1
                 fail(f"{rel}:{line} has a user name (@) in the address {mt.group(0)}: PecoFence refuses it (AGENTS.md 3.1)")
-            host = mt.group(1).split("@")[-1].split(":")[0].lower().rstrip(".")
+            authority = mt.group(1).split("@")[-1].lower()
+            host = authority.split(":")[0].rstrip(".")
             if "$" in host or "{" in host or host in NAMESPACE_HOSTS:
+                continue
+            if LOOPBACK.fullmatch(host):
+                # This computer: only the ports of permissions.local.loopback (AGENTS.md 3.1).
+                port = authority[len(host):].lstrip(":").split("/")[0]
+                port = int(port) if port.isdigit() else 443 if mt.group(0).lower().startswith(("https", "wss")) else 80
+                seen.add(("loopback", port))
+                if ("loopback", port) not in ports:
+                    line = text.count("\n", 0, mt.start()) + 1
+                    fail(f"{rel}:{line} names port {port} of this computer ({host}), which permissions.local.loopback does not declare")
                 continue
             seen.add(host)
             if host not in network | links:
                 line = text.count("\n", 0, mt.start()) + 1
-                fail(f"{rel}:{line} names the host {host}, which neither permissions.network nor permissions.links declares")
-    for need, label in (("network", "network"), ("read", "clipboard read"), ("write", "clipboard write"),
-                        ("system", "system"), ("folders", "folders"), ("notify", "notify"), ("launch", "launch"),
+                lan = re.fullmatch(r"[\d.]+|.+\.local", host) and "; a device of the local network is the address the user types in a device setting"
+                fail(f"{rel}:{line} names the host {host}, which neither permissions.network nor permissions.links declares{lan or ''}")
+    for need, label in (("network", "network or local"), ("read", "clipboard read"), ("write", "clipboard write"),
+                        ("system", "system"), ("folders", "folders"), ("folderwrite", 'folders "readwrite" (write, mkdir, trash)'),
+                        ("notify", "notify"), ("launch", "launch"),
                         ("media", "media"), ("control", "media control"), ("apps", "apps"), ("drop", "drop")):
         if have[need] and need not in used and not (need == "write" and clip == "readwrite"):
             if not (need == "network" and layer == "web"):
                 warn(f"plugin.json declares {label}, but the code never uses it: leave it out")
     for h in sorted((network | links) - seen):
         warn(f"permissions declare {h}, but no address in the code names it")
+    for c, port in sorted(ports - seen):
+        if c == "loopback":
+            warn(f"permissions.local.loopback declares port {port}, but no address in the code names it")
     readme = files.get("README.md", b"").decode("utf-8-sig", errors="replace")
     for h in sorted(network):
         if h not in readme:
