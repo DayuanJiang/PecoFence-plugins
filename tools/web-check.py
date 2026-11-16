@@ -250,13 +250,14 @@ def main():
             steps.append((0.58, lambda: emit("media")))
         if perms.get("apps"):
             steps.append((0.58, lambda: emit("apps", json.dumps({"running": perms["apps"][:1], "front": None}))))
-        # One drop with what the page takes of a file, a text and a link, as pecofence-plugin-check.
+        # One drop with what the page takes of a file, a text and a link, as pecofence-plugin-check,
+        # at a point of the page (PecoFence gives a page x and y in place of a row).
         takes = lambda kind: kind in (perms.get("drop") or [])
         if perms.get("drop"):
             steps.append((0.58, lambda: emit("drop", json.dumps({
                 "files": [{"name": "notes.txt", "size": 120, "folder": False}] if takes("files") else [],
                 "text": "a dropped text" if takes("text") else None,
-                "url": "https://example.com/" if takes("links") else None, "row": None}))))
+                "url": "https://example.com/" if takes("links") else None, "row": None, "x": 160, "y": 120}))))
         rest = None
         for at, step in steps + [(0.6, None)]:
             page.wait_for_timeout(max(0, begun + at * args.seconds - time.monotonic()) * 1000)
