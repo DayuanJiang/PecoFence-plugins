@@ -184,8 +184,8 @@ thread:
 | `pf.media.control(action)` | `media` `control`; `action` `"playpause"`, `"next"` or `"previous"`; in a click, dblclick or command handler | `true` when the player took it. Read `pf.media.current()` again for the new state |
 | `pf.apps.running()` | `apps` | the programs of `apps` that run in this sign-in session, as written there. PecoFence looks every 5 seconds, so call it at most that often |
 | `pf.apps.front()` | `apps` | the program of `apps` whose window is in front, as written there, or `null` |
-| `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the last drop on the fence; at most 4 MB, a larger file rejects |
-| `pf.drop.read(i)` | the same | the bytes of that file in standard base64; at most 4 MB |
+| `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the fence's last drop with files (a drop of only text or a link keeps it; it is gone 5 minutes after the drop); at most 1 MB, a larger file rejects (use `pf.drop.save`) |
+| `pf.drop.read(i)` | the same | the bytes of that file in standard base64; at most 1 MB |
 | `pf.drop.save(i, name)` | the same; `name` a data name | `null`: PecoFence copies the file into the data files as `name` (at most 20 MB), never through the plugin's memory |
 
 A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting or ending
@@ -234,7 +234,7 @@ the plugin is left out, as is a header whose value is not text. Windows gives up
 without a connection and 30 seconds without an answer.
 
 **Some calls need the user.** `pf.open`, `pf.launch.open`, `pf.launch.pick` and
-`pf.media.control` work only while a `click`, `dblclick` or `command` handler runs, and
+`pf.media.control` work only while a `click`, `dblclick`, `command` or `submit` handler runs, and
 `pf.launch.add` only while a `drop` handler runs: call them before the handler's first `await`.
 
 **Items and shortcuts belong to the user.** PecoFence keeps a fence's launcher items (with their
@@ -253,9 +253,9 @@ down, an update drops the command, or the plugin stops for the third time within
 | `dblclick` | a double-click on a row with an `id`. On a button cell the second click sends `click`, then `dblclick` | `{ id }` |
 | `change` | a check box cell (`true` / `false`), a slider cell (0 to 1), a to-do row's box (`true` / `false`). PecoFence shows the new state at once. A `text` input's edit ended (Esc, Ctrl+Enter or a click elsewhere) | `{ id, value }`; for the input `{ id, text }`, lines broken by `\n` |
 | `submit` | Ctrl+Enter in a `text` input (after its `change`) | `{ id }` |
-| `enter`, `leave` | the pointer came onto or left a row with `hover: "event"`; at most 10 a second (rows passed over meanwhile are left out) | `{ row }`: the row's `id` |
+| `enter`, `leave` | the pointer came onto or left a row with `hover: "event"` and an `id`; at most 10 a second (rows passed over meanwhile are left out) | `{ row }`: the row's `id` |
 | `wheel` | the wheel turned over a row or cell with `wheel: true` (the fence does not scroll); at most 20 a second, the steps added up | `{ id, steps }`: whole steps, forward is positive |
-| `apps` | a program of `apps` started or ended, or came to the front or left it (looked at every 5 seconds) | `{ running, front }` as `pf.apps.running()` and `pf.apps.front()` give them |
+| `apps` | a program of `apps` started or ended, or came to the front or left it (looked at every 5 seconds). Only a change sends it: read `pf.apps.running()` and `pf.apps.front()` at the start | `{ running, front }` as `pf.apps.running()` and `pf.apps.front()` give them |
 | `text` | a one-line box closed with Enter or a click elsewhere (Esc sends nothing), or the note changed (edited, ticked, a to-do moved) | `{ id, text }`: the input's `id`, and the box's text or the note's whole text |
 | `settings` | the user changed this fence's settings | the new settings (also in `pf.settings`) |
 | `clipboard` | the clipboard changed, once per copy (100 ms after its last step), also when the plugin itself wrote it; not for content marked private; only with `clipboard` `read` or `readwrite` | none |
@@ -265,7 +265,7 @@ down, an update drops the command, or the plugin stops for the third time within
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits. The handler has its 50 ms as any run. The calls it makes then are sent (at most 16 at once, as always), but their Promises never settle: the plugin is gone when the answers come, so it cannot wait for one | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
 | `command` | the user chose one of the plugin's menu entries (section 3.3), or pressed the shortcut of one of its `commands`. A shortcut first brings this fence up alone over all windows, as 速览 (Peek) does; pressed again, the fence goes back | `{ id, via, row }`: `via` is `"menu"` or `"key"`; `row` is the `id` of the row whose own `menu` it came from |
-| `drop` | files, a text or a link were dropped on the fence (only the kinds in `drop`): at most 20 files at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }], text, url }`: names and sizes in bytes only, never paths; `text` (at most 262,144 characters) and `url`, or `null` |
+| `drop` | files, a text or a link were dropped on the fence (only the kinds in `drop`): at most 20 files at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }], text, url, row }`: names and sizes in bytes only, never paths; `text` (at most 262,144 UTF-16 units, as JavaScript counts `length`) and `url`, or `null`; `row`: the `id` of the row under the drop point, `null` on a blank part |
 | `media` | what plays changed (with `media`): at most once a second, once a second while it plays; not while the fence is hidden (unless `background`) | none: call `pf.media.current()` |
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
@@ -305,7 +305,7 @@ out is no longer clickable.
 | `canvas` | `{ height, draw }`: a drawing as wide as the fence (below) |
 | `input` | `{ type: "note", id }`, `{ type: "line", id, value, placeholder }` or `{ type: "text", id, lines, value, placeholder, max }` (below); `kind` is read as `type` too |
 | `menu` | entries as `view.menu` (below): a right-click on this row shows them in place of `view.menu`'s |
-| `hover` | `{ color, text }` (a cell may have it too): the color and text while the pointer is on it; on a row also `"event"`: `enter` and `leave` |
+| `hover` | `{ color, text }` (a cell may have it too): the color and text while the pointer is on it; on a row with an `id` also `"event"`: `enter` and `leave` |
 | `wheel` | `true`: the wheel over the row (also on a cell) sends `wheel` |
 | `pane` | any text: this row and the rows after it scroll, the rows above it stay in place |
 | `follow` | any text: the row after this one stays in view as rows are added (a log) |
