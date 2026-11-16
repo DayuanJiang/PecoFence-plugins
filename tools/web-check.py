@@ -70,7 +70,7 @@ STUB = """
   const partRefusal = (x) => x.startsWith(".") ? "a part of the path starts with a dot"
     : /[. ]$/.test(x) ? "a part of the path ends in a dot or a space"
     : /[:<>"|?*\\x00-\\x1f]/.test(x) ? "a colon or another sign Windows does not allow in a name"
-    : /^(con|prn|aux|nul|conin\\$|conout\\$|com[1-9]|lpt[1-9])$/i.test(x.split(".")[0].trimEnd()) ? "a part of the path is a device name (con, nul, com1, ...)" : "";
+    : /^(con|prn|aux|nul|conin\\$|conout\\$|com[0-9¹²³]|lpt[0-9¹²³])$/i.test(x.split(".")[0].trimEnd()) ? "a part of the path is a device name (con, nul, com1, ...)" : "";
   const inPicked = (name, path) => () => {
     const parts = String(path).split("/").join(SEP).split(SEP).filter(Boolean);
     const why = !/^[a-z]:$/i.test(parts[0] || "") ? "not a full path with a drive" : parts.slice(1).map(partRefusal).find(Boolean)
