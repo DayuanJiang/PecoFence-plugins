@@ -311,9 +311,9 @@ plugin stops for the third time within an hour.
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits. The handler has its 50 ms as any run. The calls it makes then are sent (at most 16 at once, as always), but their Promises never settle: the plugin is gone when the answers come, so it cannot wait for one | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
 | `command` | the user chose one of the plugin's menu entries (section 3.3), or pressed the shortcut of one of its `commands`. A shortcut first brings this fence up alone over all windows, as 速览 (Peek) does; pressed again, the fence goes back | `{ id, via, row }`: `via` is `"menu"` or `"key"`; `row` is the `id` of the row whose own `menu` it came from |
-| `drop` | files, a text or a link were dropped on the fence (only the kinds in `drop`): at most 20 files at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }], text, url, row }`: names and sizes in bytes only, never paths; `text` (at most 262,144 UTF-16 units, as JavaScript counts `length`) and `url`, or `null`; `row`: the `id` of the row under the drop point, `null` on a blank part (a web page: `x` and `y` in the page) |
+| `drop` | files, a text or a link were dropped on the fence (only the kinds in `drop`): at most 20 files at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }], text, url, row }`: names and sizes in bytes only, never paths; `text` (at most 262,144 UTF-16 units, as JavaScript counts `length`) and `url`, or `null`; `row`: the `id` of the row under the drop point, `null` on a blank part (a web page: `x` and `y`, the point in the page's CSS pixels, for `document.elementFromPoint`) |
 | `media` | what plays changed (with `media`): at most once a second, once a second while it plays; not while the fence is hidden (unless `background`) | none: call `pf.media.current()` |
-| `dragend` | a drag out of a row with `drag` (section 3.3) ended | `{ row, dropped }`: the row's `id`, and whether a target took it |
+| `dragend` | a drag out of a row with `drag` (section 3.3) ended (a click that does not move sends none) | `{ row, dropped }`: the row's `id`, and whether a target took it |
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
 PecoFence writes it to its log (the plugin, the event, the message and the first line of the
@@ -455,7 +455,7 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   `pf.launch.pick` and `pf.media.control`: each press lets one such call through. The page has
   `pf.launch` without `add`. With `drop`, the page gets the `drop` event and `pf.drop` as in
   section 3.1: only the declared kinds (no folders, no other formats), and in place of `row`
-  (`null`) the point of the drop in the page, `x` and `y`. The browser itself takes no drop from
+  (`null`) the point of the drop in the page, `x` and `y` in CSS pixels. The browser itself takes no drop from
   outside. A drag the page starts works inside the page as in a browser; out of it, it goes only
   with text, a link to a host in `network` or `links`, or a picture of the page's own files, never
   a file of the computer (where WebView2 cannot check a drag, nothing is dragged out of a page).
