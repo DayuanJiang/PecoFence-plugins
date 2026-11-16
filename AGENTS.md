@@ -176,15 +176,15 @@ thread:
 | `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
 | `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
 | `pf.launch.list()` | `launch` | `[{ id, name, icon }]`: this fence's items, never a path. `icon` is the data name of the item's picture, `null` until PecoFence has made it (a `settings` event comes then) |
-| `pf.launch.pick(kind)` | `launch`; in a click, dblclick or command handler | the item the user picked in a file dialog (`kind` `"program"`: programs, anything else: any file), `{ id, name, icon }`, or `null` when they cancelled |
+| `pf.launch.pick(kind)` | `launch`; in a click, dblclick, command or submit handler | the item the user picked in a file dialog (`kind` `"program"`: programs, anything else: any file), `{ id, name, icon }`, or `null` when they cancelled |
 | `pf.launch.add(numbers)` | `launch`; only in a `drop` handler | `[{ id, name, icon }]` of the items added: the files of this drop with these numbers (`[0, 1]`), all of them in one call. A file of PecoFence's own folder or a shortcut to one is not added, a path only once, at most 200 items a fence |
 | `pf.launch.remove(id)` | `launch` | `true`, or `false` when there is no such item. The user can also remove items in the plugin's details |
-| `pf.launch.open(id)` | `launch`; in a click, dblclick or command handler | `null`: the item opens as a fence icon opens (a shortcut with its own arguments); the plugin adds no arguments |
+| `pf.launch.open(id)` | `launch`; in a click, dblclick, command or submit handler | `null`: the item opens as a fence icon opens (a shortcut with its own arguments); the plugin adds no arguments |
 | `pf.media.current()` | `media` `read` or `control` | what plays now, or `null`: `{ title, artist, album, playing, position, duration, cover, app }`, `position` and `duration` in seconds; `cover` the data name of its picture (`media-cover-...png` or `.jpg`) or `null`; `app` the program as written in `apps` when the player is one of them (`MSEdge` is `msedge.exe`), else `null`. Apps leave out what they do not know (Edge gives no album) |
-| `pf.media.control(action)` | `media` `control`; `action` `"playpause"`, `"next"` or `"previous"`; in a click, dblclick or command handler | `true` when the player took it. Read `pf.media.current()` again for the new state |
+| `pf.media.control(action)` | `media` `control`; `action` `"playpause"`, `"next"` or `"previous"`; in a click, dblclick, command or submit handler | `true` when the player took it. Read `pf.media.current()` again for the new state |
 | `pf.apps.running()` | `apps` | the programs of `apps` that run in this sign-in session, as written there. PecoFence looks every 5 seconds, so call it at most that often |
 | `pf.apps.front()` | `apps` | the program of `apps` whose window is in front, as written there, or `null` |
-| `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the fence's last drop with files (a drop of only text or a link keeps it; it is gone 5 minutes after the drop); at most 1 MB, a larger file rejects (use `pf.drop.save`) |
+| `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the fence's last drop with files (a drop of only text or a link keeps it; it is gone 5 minutes after the drop); at most 1 MB, a larger file rejects (use `pf.drop.save`), so does a file with a NUL or not in UTF-8 (`not a text file; use pf.drop.read`) |
 | `pf.drop.read(i)` | the same | the bytes of that file in standard base64; at most 1 MB |
 | `pf.drop.save(i, name)` | the same; `name` a data name | `null`: PecoFence copies the file into the data files as `name` (at most 20 MB), never through the plugin's memory |
 
@@ -206,10 +206,10 @@ one fence keeps that way; other files stay until the plugin is uninstalled.
 **Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
 an `Error` at once that says what it needs, such as `http.get needs an https address with
 example.com in permissions.network`, `clipboard.text needs permissions.clipboard read` or
-`pf.open works only in a click, dblclick or command handler`. So does a call past the calls a
-plugin may have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`.
-Put calls that can be refused in `try` (an error that escapes ends the handler there, section
-3.2), and queue many calls (removing 30 files) instead of making them all at once.
+`pf.open works only in a click, dblclick, command or submit handler`. So does a call past the
+calls a plugin may have under way: `http.get: too many calls at once (at most 4 requests and 16
+calls)`. Put calls that can be refused in `try` (an error that escapes ends the handler there,
+section 3.2), and queue many calls (removing 30 files) instead of making them all at once.
 
 **Failed calls reject.** A call PecoFence tried and could not do rejects its Promise with an
 `Error` whose message says why: no answer from the network, an answer larger than 1 MB, more than
@@ -253,8 +253,8 @@ down, an update drops the command, or the plugin stops for the third time within
 | `dblclick` | a double-click on a row with an `id`. On a button cell the second click sends `click`, then `dblclick` | `{ id }` |
 | `change` | a check box cell (`true` / `false`), a slider cell (0 to 1), a to-do row's box (`true` / `false`). PecoFence shows the new state at once. A `text` input's edit ended (Esc, Ctrl+Enter or a click elsewhere) | `{ id, value }`; for the input `{ id, text }`, lines broken by `\n` |
 | `submit` | Ctrl+Enter in a `text` input (after its `change`) | `{ id }` |
-| `enter`, `leave` | the pointer came onto or left a row with `hover: "event"` and an `id`; at most 10 a second (rows passed over meanwhile are left out) | `{ row }`: the row's `id` |
-| `wheel` | the wheel turned over a row or cell with `wheel: true` (the fence does not scroll); at most 20 a second, the steps added up | `{ id, steps }`: whole steps, forward is positive |
+| `enter`, `leave` | the pointer came onto or left a row with `hover: "event"` and an `id`; at most 10 a second (rows passed over meanwhile are left out); none while the fence is hidden | `{ row }`: the row's `id` |
+| `wheel` | the wheel turned over a row or cell with `wheel: true` (the fence does not scroll); at most 20 a second, none while the fence is hidden, the steps added up | `{ id, steps }`: whole steps, forward is positive |
 | `apps` | a program of `apps` started or ended, or came to the front or left it (looked at every 5 seconds). Only a change sends it: read `pf.apps.running()` and `pf.apps.front()` at the start | `{ running, front }` as `pf.apps.running()` and `pf.apps.front()` give them |
 | `text` | a one-line box closed with Enter or a click elsewhere (Esc sends nothing), or the note changed (edited, ticked, a to-do moved) | `{ id, text }`: the input's `id`, and the box's text or the note's whole text |
 | `settings` | the user changed this fence's settings | the new settings (also in `pf.settings`) |
@@ -358,7 +358,8 @@ The two inputs:
 - `{ input: { type: "text", id, lines, value, placeholder, max } }`: a box `lines` lines tall (2 to
   12, 2 if not given) with `value`. A click opens it for editing: Enter breaks a line; Esc,
   Ctrl+Enter or a click elsewhere ends it and sends `change`, Ctrl+Enter also `submit`. At most
-  `max` characters (1 to 65,536) and 64 KB; the plugin keeps the text.
+  `max` UTF-16 units (1 to 65,536, 65,536 if not given; an emoji takes two); the plugin keeps the
+  text.
 
 While a note or a box is open, PecoFence holds back restarts and updates of the plugin
 until it closes.
