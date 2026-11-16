@@ -51,7 +51,7 @@ STUB = """
     const big = new TextEncoder().encode(JSON.stringify({ id: ++n, call: name, args })).length > 1048576;
     const why = big ? "a message to PecoFence is at most 1 MB" : refuse ? refuse() : "";
     record(name, args, why);
-    return why ? Promise.reject(big ? new RangeError(`pf.${name}: ${why}`) : new Error(why)) : Promise.resolve(answer === undefined ? null : answer);
+    return why ? Promise.reject(big ? new RangeError(`pf.${name}: ${why}`) : new Error(why.replace(/^rejected: /, ""))) : Promise.resolve(answer === undefined ? null : answer);
   };
   const needHost = (u, list, field) => () => !host(u) ? "an address PecoFence refuses (AGENTS.md 3.1)"
     : list.includes(host(u)) ? "" : `${host(u)} is not in permissions.${field}`;
@@ -60,10 +60,25 @@ STUB = """
   const needFlag = (f) => () => P[f] ? "" : `permissions.${f} is not true`;
   const folders = { true: 1, read: 1, readwrite: 2 }[P.folders] || 0;
   const needFolders = (n) => () => folders >= n ? "" : n > 1 ? 'permissions.folders is not "readwrite"' : "permissions.folders does not read";
-  // The folder dialog picks this folder, as in pecofence-plugin-check; a change elsewhere rejects.
+  // The folder dialog picks this folder, as in pecofence-plugin-check. A write, mkdir or trash
+  // rejects as in PecoFence (folder_write.rs): before a pick, a part of the path that starts with
+  // a dot (.git, ..) or ends in a dot or a space, a colon or another sign Windows refuses, a device
+  // name, a path outside the picked folder, and for write a file that is no data file.
   const SEP = String.fromCharCode(92), PICKED = ["C:", "Users", "me", "Documents", "Picked"].join(SEP);
-  const inPicked = (path) => () => needFolders(2)() || (String(path).split("/").join(SEP).toLowerCase().startsWith(PICKED.toLowerCase() + SEP) ? ""
-    : `rejected: ${path} is not inside a folder the user picked`);
+  const DATA = /.\.(txt|md|json|csv|log|ics|png|jpg|gif|webp)$/i;
+  let picked = false;
+  const partRefusal = (x) => x.startsWith(".") ? "a part of the path starts with a dot"
+    : /[. ]$/.test(x) ? "a part of the path ends in a dot or a space"
+    : /[:<>"|?*\\x00-\\x1f]/.test(x) ? "a colon or another sign Windows does not allow in a name"
+    : /^(con|prn|aux|nul|conin\\$|conout\\$|com[1-9]|lpt[1-9])$/i.test(x.split(".")[0].trimEnd()) ? "a part of the path is a device name (con, nul, com1, ...)" : "";
+  const inPicked = (name, path) => () => {
+    const parts = String(path).split("/").join(SEP).split(SEP).filter(Boolean);
+    const why = !/^[a-z]:$/i.test(parts[0] || "") ? "not a full path with a drive" : parts.slice(1).map(partRefusal).find(Boolean)
+      || (!picked ? "no folder is picked yet (pf.folder.pick)" : "")
+      || (parts.join(SEP).toLowerCase().startsWith(PICKED.toLowerCase() + SEP) ? "" : `${path} is not inside a folder the user picked`)
+      || (name === "folder.write" && !DATA.test(parts[parts.length - 1]) ? "only these kinds of files: txt md json csv log ics png jpg gif webp" : "");
+    return needFolders(2)() || (why && `rejected: ${name}: ${why}`);
+  };
   // pf.http: a network host, or a port of permissions.local: loopback on this computer by name,
   // lan only to the address typed in a device setting (none unless --settings gives one).
   const L = P.local || {}, devices = __DEVICES__;
@@ -121,9 +136,9 @@ STUB = """
     open: (u) => call("open", [u], pressNeeded("open", needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links"))),
     openSystem: (n) => call("openSystem", [n], () => n === "taskmgr" ? "" : `${n} is not a known system window`),
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
-    folder: { pick: () => call("folder.pick", [], needFolders(1), PICKED), list: (p) => call("folder.list", [p], needFolders(1), []), read: (p) => call("folder.read", [p], needFolders(1), ""),
-              write: (p, t) => call("folder.write", [p, t], inPicked(p)), mkdir: (p) => call("folder.mkdir", [p], inPicked(p)),
-              trash: (p) => call("folder.trash", [p], inPicked(p), true) },
+    folder: { pick: () => { picked = picked || !needFolders(1)(); return call("folder.pick", [], needFolders(1), PICKED); }, list: (p) => call("folder.list", [p], needFolders(1), []), read: (p) => call("folder.read", [p], needFolders(1), ""),
+              write: (p, t) => call("folder.write", [p, t], inPicked("folder.write", p)), mkdir: (p) => call("folder.mkdir", [p], inPicked("folder.mkdir", p)),
+              trash: (p) => call("folder.trash", [p], inPicked("folder.trash", p), true) },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),
     // The shapes of AGENTS.md 3.1: one launcher item, the user cancels the dialog, a song plays.
     launch: { list: () => call("launch.list", [], needFlag("launch"), [{ id: "1", name: "notes.txt", icon: null }]),
