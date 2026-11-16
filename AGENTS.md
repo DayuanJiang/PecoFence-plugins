@@ -161,7 +161,7 @@ thread:
 |---|---|---|
 | `pf.http.get(url, { headers })` | an `https://` address whose host is in `network`, or an `http://` or `https://` address on a port of `local` (*Local services* below) | `{ status, headers, body }`: the status number (any status: a 404 resolves too), the answer's headers by lower-case name, the body as text (UTF-8) |
 | `pf.http.post(url, { headers, body })` | the same; `body` is text | the same |
-| `pf.data.read(name)` | a data name | the file's text, or `null` when there is no such file |
+| `pf.data.read(name)` | a data name | the file's text, or `null` when there is no such file; in `main.js` at most what fits the 2 MB answer limit (*Failed calls reject*) |
 | `pf.data.write(name, text)` | a data name | `null`; a value that is not text is written as its JSON |
 | `pf.data.remove(name)` | a data name | `null`, also when there was no such file |
 | `pf.data.list()` | | the names of the plugin's data files, sorted. The folder is the plugin's: every fence of it sees the same files |
@@ -182,10 +182,10 @@ thread:
 | `pf.run(program, args)` | `program` one of the texts in `system`, written as there (only capital and small letters may differ: with `"system": ["ipconfig.exe"]`, `pf.run("ipconfig.exe", ["/all"])` runs and `pf.run("ipconfig")` is refused); `args` an array of texts; 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB. Programs it starts end with it, or at the 30 seconds limit |
 | `pf.folder.pick()` | `folders` | the path of the folder the user picked (PecoFence remembers it for this fence), or `null` when they cancelled |
 | `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `[{ name, path, folder, size, modified }]`, at most 10,000: `folder` is `true` for a folder, `modified` is in ms since 1970 |
-| `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
+| `pf.folder.read(path)` | the same | the file's text (UTF-8); in `main.js` at most what fits the 2 MB answer limit, in a web page at most 20 MB |
 | `pf.folder.write(path, text)` | `folders` `"readwrite"`; `path` a data file inside a picked folder (*Writing in folders* below) | `null`: the file holds `text` (UTF-8; a value that is not text is written as its JSON), at most 20 MB |
 | `pf.folder.mkdir(path)` | the same; `path` a new folder inside a picked folder, in a folder that is there | `null`, also when the folder was there |
-| `pf.folder.trash(path)` | the same; `path` a file or folder below a picked folder (not the picked folder itself) | `true` when it went to the Recycle Bin; `false` when it could not go there (a network folder, a USB stick) and the user said no to deleting it. A path that is not there rejects |
+| `pf.folder.trash(path)` | the same; `path` a file or folder below a picked folder (not the picked folder itself) | `true`: it is in the Recycle Bin. A link or junction, something that cannot go to the Recycle Bin (on a network folder or a USB stick) and a path that is not there reject: nothing is ever deleted for good |
 | `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
 | `pf.launch.list()` | `launch` | `[{ id, name, icon }]`: this fence's items, never a path. `icon` is the data name of the item's picture, `null` until PecoFence has made it (a `settings` event comes then) |
 | `pf.launch.pick(kind)` | `launch`; in a click, dblclick, command or submit handler | the item the user picked in a dialog (`kind` `"program"`: programs, `"folder"`: a folder, anything else: any file), `{ id, name, icon }`, or `null` when they cancelled |
@@ -203,7 +203,10 @@ thread:
 A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting or ending
 with a dot, and not a device name (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`,
 also with an extension such as `nul.txt`). A data file holds at most 20 MB: `pf.data.write` of
-more, and `pf.data.read` of a larger file, reject. `pf.data.write` replaces the file whole, so a
+more, and `pf.data.read` of a larger file, reject. In `main.js` a read gives at most what fits
+the 2 MB answer limit (*Failed calls reject*); a file up to 20 MB reaches the data files only
+through `pf.drop.save`, which copies it without the plugin's memory, and a web page reads it
+whole. `pf.data.write` replaces the file whole, so a
 read never finds half of it. The data files are shared by all fences of the plugin, at most 200 MB
 in all, and deleted when it is uninstalled.
 
@@ -256,10 +259,12 @@ reached only at the host the user typed in the plugin's `device` setting
 of the local network: 10.x, 172.16.x to 172.31.x, 192.168.x, 169.254.x, 100.64.x to 100.127.x
 (Tailscale), fd00::/8, fe80::/10. PecoFence looks up the name for each connection and checks
 the address the connection goes to (IPv4 first; plain `http` goes to exactly the address it
-checked), never through a proxy. It does not look for devices: the user types the address. Each
-redirect is checked as a new request. Plain `http` is allowed here; a web page reaches these
-services only through `pf.http` (its own `fetch` is blocked). Ask nothing before the address is
-typed (the `device` setting is `null`): show what to fill in instead.
+checked), never through a proxy. It does not look for devices: the user types the address. A
+redirect never changes the class: a request to the internet, to this computer or to the device
+goes on only to an address of the same kind (else `redirect refused`). Plain `http` is allowed
+here; a web page reaches these services only through `pf.http` (its own `fetch` is blocked).
+Ask nothing before the address is typed (the `device` setting is `null`): show what to fill in
+instead.
 
 **Writing in folders.** `pf.folder.write`, `mkdir` and `trash` take a full path inside a folder
 the user picked for this fence, and check it each time, also its real path after links (for a
