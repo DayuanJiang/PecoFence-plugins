@@ -17,7 +17,7 @@ env:
   # to DayuanJiang/PecoFence that has the plugin host PecoFence ships (the owner sets it after
   # pushing PecoFence; README.md lists it). Raise it when PecoFence's plugin host changes.
   # For now the head of PecoFence's plugin-system branch (draft PR #239), until it merges into main.
-  PECOFENCE_COMMIT: 364d2648c982794f0a1f6d207885bbc75cbbeb94
+  PECOFENCE_COMMIT: ad8ec6a5a4cbd5a152a8d0c2940f1db266eea0c9
   PLAYWRIGHT_VERSION: 1.65.2
 
 jobs:
