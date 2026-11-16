@@ -60,7 +60,8 @@ STUB = """
   const offline = (u, list) => () => needHost(u, list, "network")() || "offline (the check has no network)";
   // pf.open works within 1 second after a mouse press in the fence.
   let pressed = -1e9;
-  addEventListener("pointerdown", () => (pressed = Date.now()), true);
+  // Only a real press counts: one the page dispatches itself (isTrusted false) grants nothing.
+  addEventListener("pointerdown", (e) => { if (e.isTrusted) pressed = Date.now(); }, true);
   // pf.open, pf.launch.open and pick and pf.media.control: one call per press, within 1 second.
   const pressNeeded = (name, then) => () => {
     if (Date.now() - pressed > 1000) return `pf.${name} works only right after a click in the fence`;
