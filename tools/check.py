@@ -13,11 +13,15 @@ import re
 import subprocess
 import sys
 
-API = 1
+API = 2
 LANGS = {"en", "zh-CN", "zh-TW", "ja", "ko", "de", "fr", "es", "pt-BR", "ru", "it"}
 TOP_KEYS = {"id", "version", "api", "layer", "name", "description", "author", "minPecoFence",
             "permissions", "settings"}
-PERM_KEYS = {"network", "links", "clipboard", "background", "system", "folders", "notify"}
+# Interface 2: a manifest using any of these says api 2 (PecoFence's API2_FIELDS).
+API2 = ["commands", "drop", "launch", "media", "apps"]
+PERM_KEYS = {"network", "links", "clipboard", "background", "system", "folders", "notify", *API2}
+MEDIA = ["none", "read", "control"]
+DROPS = {"files"}
 CLIPBOARD = ["none", "write", "read", "readwrite"]
 SETTING_TYPES = {"text", "number", "switch", "choice"}
 SIZES = {"plugin.json": 64 << 10, "README.md": 64 << 10, "main.js": 200 << 10, "screenshot.png": 300 << 10}
@@ -75,6 +79,11 @@ USES = [
     ("folders", r"\bpf\.folder\.", "pf.folder"),
     ("notify", r"\bpf\.notify\s*\(", "pf.notify"),
     ("links", r"\bpf\.open\s*\(", "pf.open"),
+    ("launch", r"\bpf\.launch\.", "pf.launch"),
+    ("media", r"\bpf\.media\.|\bpf\.on\(\s*['\"`]media['\"`]", "pf.media or the media event"),
+    ("control", r"\bpf\.media\.control\s*\(", "pf.media.control"),
+    ("apps", r"\bpf\.apps\.", "pf.apps"),
+    ("drop", r"\bpf\.on\(\s*['\"`]drop['\"`]", "the drop event"),
 ]
 URL = re.compile(r"(?i)\b(?:https?|wss?)://([^\s/\"'`<>()\\?#]+)")
 BUILT_URL = re.compile(r"(?i)['\"`](?:https?|wss?)://['\"`]?\s*\+|`(?:https?|wss?)://\$\{")
@@ -207,6 +216,34 @@ def check_hosts(hosts, field):
     return hosts
 
 
+def check_api2(p, api):
+    """AGENTS.md 2: the fields of interface 2, as PecoFence reads them."""
+    used = [k for k in API2 if p.get(k) not in (None, [], False, "none")]
+    if used and api != 2:
+        fail(f"permissions {', '.join(used)} need api 2")
+    commands = p.get("commands", [])
+    ids = [c.get("id") for c in commands if isinstance(c, dict)] if isinstance(commands, list) else []
+    if not isinstance(commands, list) or len(commands) > 8 or len(ids) != len(commands) \
+            or not all(isinstance(i, str) and re.fullmatch(r"[A-Za-z0-9-]{1,32}", i, re.A) for i in ids) \
+            or len(set(ids)) != len(ids):
+        fail("permissions.commands is a list of at most 8 { id, title }, each id 1 to 32 letters, digits or '-', each once")
+    else:
+        for c in commands:
+            texts_ok(c.get("title"), f"permissions.commands {c['id']} title", 40)
+    drop = p.get("drop", [])
+    if not isinstance(drop, list) or not all(isinstance(d, str) and d in DROPS for d in drop) \
+            or len(set(drop)) != len(drop):
+        fail(f"permissions.drop is a list of {', '.join(sorted(DROPS))}, each once")
+    if not isinstance(p.get("launch", False), bool):
+        fail("permissions.launch is true or false")
+    if p.get("media", "none") not in MEDIA:
+        fail(f"permissions.media is one of {', '.join(MEDIA)}")
+    apps = p.get("apps", [])
+    if not isinstance(apps, list) or len(apps) > 20 or not all(
+            isinstance(a, str) and NAME.fullmatch(a) and a.lower().endswith(".exe") for a in apps):
+        fail("permissions.apps is a list of at most 20 program names ending in .exe (spotify.exe), no paths")
+
+
 def check_manifest(m, pid):
     """AGENTS.md section 2."""
     for key in sorted(set(m) - TOP_KEYS):
@@ -218,8 +255,8 @@ def check_manifest(m, pid):
     for key in ("version", "minPecoFence"):
         if not version_ok(m.get(key)):
             fail(f"{key} {m.get(key)!r} is not x.y.z")
-    if type(m.get("api")) is not int or m["api"] != API:
-        fail(f"api is {m.get('api')!r}; this repository knows api {API}")
+    if type(m.get("api")) is not int or not 1 <= m["api"] <= API:
+        fail(f"api is {m.get('api')!r}; this repository knows api 1 and 2")
     if m.get("layer") not in ("light", "web"):
         fail(f"layer is {m.get('layer')!r}, not light or web")
     texts_ok(m.get("name"), "name", 60)
@@ -249,6 +286,7 @@ def check_manifest(m, pid):
                  or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I | re.A)) for s in system):
         fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
              "no empty part and no '..') or a name in System32 (x.exe)")
+    check_api2(p, m.get("api"))
     settings = m.get("settings", [])
     if not isinstance(settings, list) or len(settings) > 20:
         fail("settings is a list of at most 20")
@@ -306,7 +344,15 @@ def check_update(m, pid, base, pr_author):
         more.append(f"clipboard {oc} to {nc}")
     if m.get("layer") != old.get("layer"):
         more.append(f"layer {old.get('layer')} to {m.get('layer')}")
-    more += [f"{k} turned on" for k in ("background", "folders", "notify") if n.get(k) and not o.get(k)]
+    more += [f"{k} turned on" for k in ("background", "folders", "notify", "launch") if n.get(k) and not o.get(k)]
+    # Interface 2, as PecoFence's more_permissions: command ids exactly, drops and apps in any case.
+    ids = lambda d: {c.get("id") for c in d.get("commands", []) if isinstance(c, dict)}
+    lower = lambda d, k: {str(x).lower() for x in d.get(k, [])}
+    more += [f"commands: {sorted(map(str, ids(n) - ids(o)))}"] if ids(n) - ids(o) else []
+    more += [f"{k}: {sorted(lower(n, k) - lower(o, k))}" for k in ("drop", "apps") if lower(n, k) - lower(o, k)]
+    level = lambda d: MEDIA.index(d.get("media")) if d.get("media") in MEDIA else 0
+    if level(n) > level(o):
+        more.append(f"media {o.get('media', 'none')} to {n.get('media')}")
     if more:
         warn(f"this update asks for more ({'; '.join(more)}): users confirm it before it installs")
     print(f"PASS: update {old['version']} to {m.get('version')}")
@@ -318,7 +364,9 @@ def check_code(files, p, layer):
     clip = p.get("clipboard", "none")
     have = {"network": bool(network), "read": clip in ("read", "readwrite"),
             "write": clip in ("write", "readwrite"), "system": bool(p.get("system")),
-            "folders": bool(p.get("folders")), "notify": bool(p.get("notify")), "links": bool(network | links)}
+            "folders": bool(p.get("folders")), "notify": bool(p.get("notify")), "links": bool(network | links),
+            "launch": p.get("launch") is True, "media": p.get("media") in ("read", "control"),
+            "control": p.get("media") == "control", "apps": bool(p.get("apps")), "drop": bool(p.get("drop"))}
     used, seen = set(), set()
     for rel, data in files.items():
         ext = pathlib.PurePosixPath(rel).suffix.lower()
@@ -342,7 +390,8 @@ def check_code(files, p, layer):
                     used.add(need)
                     if not have[need]:
                         perm = {"read": "clipboard read or readwrite", "write": "clipboard write or readwrite",
-                                "links": "network or links"}.get(need, need)
+                                "links": "network or links", "media": "media read or control",
+                                "control": "media control"}.get(need, need)
                         fail(f"{rel} uses {what}, but plugin.json does not declare permissions.{perm}")
             if BUILT_URL.search(text):
                 warn(f"{rel} builds an address at run time: the run check and the review check where it goes")
@@ -358,7 +407,8 @@ def check_code(files, p, layer):
                 line = text.count("\n", 0, mt.start()) + 1
                 fail(f"{rel}:{line} names the host {host}, which neither permissions.network nor permissions.links declares")
     for need, label in (("network", "network"), ("read", "clipboard read"), ("write", "clipboard write"),
-                        ("system", "system"), ("folders", "folders"), ("notify", "notify")):
+                        ("system", "system"), ("folders", "folders"), ("notify", "notify"), ("launch", "launch"),
+                        ("media", "media"), ("control", "media control"), ("apps", "apps"), ("drop", "drop")):
         if have[need] and need not in used and not (need == "write" and clip == "readwrite"):
             if not (need == "network" and layer == "web"):
                 warn(f"plugin.json declares {label}, but the code never uses it: leave it out")
