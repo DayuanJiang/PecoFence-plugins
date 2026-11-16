@@ -64,8 +64,10 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
 - `version` and `minPecoFence` are `x.y.z`. Raise `version` in every pull request that changes the
   plugin. `api` is the plugin interface version: `2` for a plugin that uses any of `commands`,
-  `drop`, `launch`, `media` or `apps` (with `minPecoFence` `0.5.0` or later), else `1`. A
-  PecoFence that knows only interface 1 shows such a plugin as 需要更新 PecoFence.
+  `drop`, `launch`, `media` or `apps` or a `secret` setting (with `minPecoFence` `0.5.0` or
+  later), else `1`. A PecoFence that knows only interface 1 shows such a plugin as 需要更新
+  PecoFence. The view parts new in 0.5.0 (a row's `menu`, `hover`, `wheel`, the `text` input)
+  need no `api: 2`, only `minPecoFence` `0.5.0`.
 - `name` (at most 60 characters) and `description` (at most 300) need `en`; add the languages you
   can: `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt-BR`, `ru`, `it`.
 - `author` is the GitHub account that owns the plugin. Only that account can change it later.
@@ -82,15 +84,19 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   | `folders` | the plugin may ask the user to pick a folder and read it (read-only) |
   | `notify` | the plugin may show a notice card and play a sound |
   | `commands` | at most 8 `{ "id": "show", "title": { "en": "Show the launcher" } }`: actions the user can give a shortcut in the plugin's details (event `command`). `id` 1 to 32 letters, digits and `-`, each once (`Show` and `show` are two); `title` needs `en`, at most 40 characters. A plugin cannot bring its own key. The warning says "Has these commands: …. You can give them shortcuts in the plugin's details" |
-  | `drop` | `["files"]`: files may be dropped on the fence (event `drop`). Text and links come later. The warning says "It can read the files and text you drag onto it" |
+  | `drop` | any of `files`, `text` and `links` (`http` and `https` addresses): what may be dropped on the fence (event `drop`). The warning says "It can read the files and text you drag onto it" |
   | `launch` | `true`: the fence keeps the files, folders and programs the user puts into it and opens them (`pf.launch`). The warning says "Open the files, folders and programs you put into this fence" |
   | `media` | `read`: sees what Windows' media session plays now (`pf.media.current`, event `media`); `control`: may also pause it and skip (`pf.media.control`). The warning says "Sees the song or video playing now: its title, artist, album and cover", with `control` ", and can pause it and skip" |
-  | `apps` | at most 20 program names ending in `.exe`, without a path (`spotify.exe`): `pf.apps.running` tells which of them run. The warning says "Knows whether these programs run: spotify.exe" |
+  | `apps` | at most 20 program names ending in `.exe`, without a path (`spotify.exe`): `pf.apps.running` and `pf.apps.front` tell which of them run and which is in front (event `apps`). The warning says "Knows whether these programs run and whether they are in front: spotify.exe" |
 
 - `settings`: what the fence menu's 插件设置 offers, at most 20. Each has a `key` (letters and
   digits), a `type` (`text`, `number`, `switch`, or `choice` with 1 to 50 `options`:
   `[{ "value": "c", "label": { "en": "Celsius" } }]`), a `label` with `en`, and a `default` of
-  that type. Each fence of the plugin keeps its own settings.
+  that type. Each fence of the plugin keeps its own settings. A `secret` (needs `api: 2`) has
+  no `default`: the user types it in a masked box with 「显示」 (Show), PecoFence keeps it
+  encrypted for this Windows account on this computer, never in exports or logs, and the plugin
+  reads it in `pf.settings` (`null` until typed). Beside it stands "The plugin can read this
+  value. It is saved encrypted on this computer; on another computer you type it again."
 - Users see the permissions in plain words before they install. An update that asks for more
   (a new host, reading or writing the clipboard where it did not before, another `layer`,
   `background`, `folders`, `notify` or `launch` turned on, a new program in `system` or `apps`, a
@@ -177,6 +183,10 @@ thread:
 | `pf.media.current()` | `media` `read` or `control` | what plays now, or `null`: `{ title, artist, album, playing, position, duration, cover, app }`, `position` and `duration` in seconds; `cover` the data name of its picture (`media-cover-...png` or `.jpg`) or `null`; `app` the program as written in `apps` when the player is one of them (`MSEdge` is `msedge.exe`), else `null`. Apps leave out what they do not know (Edge gives no album) |
 | `pf.media.control(action)` | `media` `control`; `action` `"playpause"`, `"next"` or `"previous"`; in a click, dblclick or command handler | `true` when the player took it. Read `pf.media.current()` again for the new state |
 | `pf.apps.running()` | `apps` | the programs of `apps` that run in this sign-in session, as written there. PecoFence looks every 5 seconds, so call it at most that often |
+| `pf.apps.front()` | `apps` | the program of `apps` whose window is in front, as written there, or `null` |
+| `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the last drop on the fence; at most 4 MB, a larger file rejects |
+| `pf.drop.read(i)` | the same | the bytes of that file in standard base64; at most 4 MB |
+| `pf.drop.save(i, name)` | the same; `name` a data name | `null`: PecoFence copies the file into the data files as `name` (at most 20 MB), never through the plugin's memory |
 
 A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting or ending
 with a dot, and not a device name (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`,
@@ -196,10 +206,10 @@ one fence keeps that way; other files stay until the plugin is uninstalled.
 **Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
 an `Error` at once that says what it needs, such as `http.get needs an https address with
 example.com in permissions.network`, `clipboard.text needs permissions.clipboard read` or
-`pf.open works only in a click, dblclick or command handler`. So does a call past the calls a plugin may
-have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`. Put calls
-that can be refused in `try` (an error that escapes ends the handler there, section 3.2), and
-queue many calls (removing 30 files) instead of making them all at once.
+`pf.open works only in a click, dblclick or command handler`. So does a call past the calls a
+plugin may have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`.
+Put calls that can be refused in `try` (an error that escapes ends the handler there, section
+3.2), and queue many calls (removing 30 files) instead of making them all at once.
 
 **Failed calls reject.** A call PecoFence tried and could not do rejects its Promise with an
 `Error` whose message says why: no answer from the network, an answer larger than 1 MB, more than
@@ -218,9 +228,9 @@ address rejects with `redirect refused`. PecoFence requests or opens exactly the
 
 **Requests.** PecoFence follows redirects (301, 302, 303, 307, 308) one hop at a time, at most 5,
 and checks each new host against `network`. A 303, and a 301 or 302 answering a `post`, goes on
-as a `get` without the body; on another host the `Authorization` and `Cookie` headers are left
-out. The User-Agent is `PecoFence-plugin/<id> <version>`: a `User-Agent` or `Host` header of the
-plugin is left out, as is a header whose value is not text. Windows gives up after 15 seconds
+as a `get` without the body; to another scheme, host or port none of the plugin's own headers
+go along. The User-Agent is `PecoFence-plugin/<id> <version>`: a `User-Agent` or `Host` header of
+the plugin is left out, as is a header whose value is not text. Windows gives up after 15 seconds
 without a connection and 30 seconds without an answer.
 
 **Some calls need the user.** `pf.open`, `pf.launch.open`, `pf.launch.pick` and
@@ -241,7 +251,11 @@ down, an update drops the command, or the plugin stops for the third time within
 | `resize` | the fence's content changed size | `{ width, height }` (also in `pf.fence`) |
 | `click` | a click on a row or a cell with an `id` | `{ id }` |
 | `dblclick` | a double-click on a row with an `id`. On a button cell the second click sends `click`, then `dblclick` | `{ id }` |
-| `change` | a check box cell (`true` / `false`), a slider cell (0 to 1), a to-do row's box (`true` / `false`). PecoFence shows the new state at once | `{ id, value }` |
+| `change` | a check box cell (`true` / `false`), a slider cell (0 to 1), a to-do row's box (`true` / `false`). PecoFence shows the new state at once. A `text` input's edit ended (Esc, Ctrl+Enter or a click elsewhere) | `{ id, value }`; for the input `{ id, text }`, lines broken by `\n` |
+| `submit` | Ctrl+Enter in a `text` input (after its `change`) | `{ id }` |
+| `enter`, `leave` | the pointer came onto or left a row with `hover: "event"`; at most 10 a second (rows passed over meanwhile are left out) | `{ row }`: the row's `id` |
+| `wheel` | the wheel turned over a row or cell with `wheel: true` (the fence does not scroll); at most 20 a second, the steps added up | `{ id, steps }`: whole steps, forward is positive |
+| `apps` | a program of `apps` started or ended, or came to the front or left it (looked at every 5 seconds) | `{ running, front }` as `pf.apps.running()` and `pf.apps.front()` give them |
 | `text` | a one-line box closed with Enter or a click elsewhere (Esc sends nothing), or the note changed (edited, ticked, a to-do moved) | `{ id, text }`: the input's `id`, and the box's text or the note's whole text |
 | `settings` | the user changed this fence's settings | the new settings (also in `pf.settings`) |
 | `clipboard` | the clipboard changed, once per copy (100 ms after its last step), also when the plugin itself wrote it; not for content marked private; only with `clipboard` `read` or `readwrite` | none |
@@ -250,8 +264,8 @@ down, an update drops the command, or the plugin stops for the third time within
 | `timechange` | the system time, the time zone or the region format changed | none |
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits. The handler has its 50 ms as any run. The calls it makes then are sent (at most 16 at once, as always), but their Promises never settle: the plugin is gone when the answers come, so it cannot wait for one | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
-| `command` | the user chose one of the plugin's menu entries (section 3.3), or pressed the shortcut of one of its `commands`. A shortcut first brings this fence up alone over all windows, as 速览 (Peek) does; pressed again, the fence goes back | `{ id, via }`: `via` is `"menu"` or `"key"` |
-| `drop` | files were dropped on the fence (with `drop` `files`): at most 20 at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }] }`: names and sizes in bytes only, never paths |
+| `command` | the user chose one of the plugin's menu entries (section 3.3), or pressed the shortcut of one of its `commands`. A shortcut first brings this fence up alone over all windows, as 速览 (Peek) does; pressed again, the fence goes back | `{ id, via, row }`: `via` is `"menu"` or `"key"`; `row` is the `id` of the row whose own `menu` it came from |
+| `drop` | files, a text or a link were dropped on the fence (only the kinds in `drop`): at most 20 files at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }], text, url }`: names and sizes in bytes only, never paths; `text` (at most 262,144 characters) and `url`, or `null` |
 | `media` | what plays changed (with `media`): at most once a second, once a second while it plays; not while the fence is hidden (unless `background`) | none: call `pf.media.current()` |
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
@@ -289,7 +303,10 @@ out is no longer clickable.
 | `cells` | a row of cells, at most 64 (below) |
 | `chart` | `{ values, color, height }`: a line chart of at most 1,000 numbers |
 | `canvas` | `{ height, draw }`: a drawing as wide as the fence (below) |
-| `input` | `{ type: "note", id }` or `{ type: "line", id, value, placeholder }` (below); `kind` is read as `type` too |
+| `input` | `{ type: "note", id }`, `{ type: "line", id, value, placeholder }` or `{ type: "text", id, lines, value, placeholder, max }` (below); `kind` is read as `type` too |
+| `menu` | entries as `view.menu` (below): a right-click on this row shows them in place of `view.menu`'s |
+| `hover` | `{ color, text }` (a cell may have it too): the color and text while the pointer is on it; on a row also `"event"`: `enter` and `leave` |
+| `wheel` | `true`: the wheel over the row (also on a cell) sends `wheel` |
 | `pane` | any text: this row and the rows after it scroll, the rows above it stay in place |
 | `follow` | any text: the row after this one stays in view as rows are added (a log) |
 
@@ -338,8 +355,12 @@ The two inputs:
   `placeholder` while it is empty). A click on the row opens a one-line box over it, with the
   input method, as a fence's name box; Enter or a click elsewhere sends `text`, Esc closes it
   without.
+- `{ input: { type: "text", id, lines, value, placeholder, max } }`: a box `lines` lines tall (2 to
+  12, 2 if not given) with `value`. A click opens it for editing: Enter breaks a line; Esc,
+  Ctrl+Enter or a click elsewhere ends it and sends `change`, Ctrl+Enter also `submit`. At most
+  `max` characters (1 to 65,536) and 64 KB; the plugin keeps the text.
 
-While a note or a one-line box is open, PecoFence holds back restarts and updates of the plugin
+While a note or a box is open, PecoFence holds back restarts and updates of the plugin
 until it closes.
 
 ### 3.4 Limits
@@ -373,7 +394,9 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   browser's `setInterval` and `setTimeout`, and stop them on `hide`); `pf.post` is added (below).
   A call refused there, also one past the 4 requests and 16 calls a plugin may have under way,
   rejects its Promise; so does a call whose arguments are over 1 MB (a `RangeError`). `pf.open`
-  works within 1 second after a mouse press in the fence.
+  works within 1 second after a mouse press in the fence, as do `pf.launch.open`,
+  `pf.launch.pick` and `pf.media.control`: each press lets one such call through. The page has
+  `pf.launch` without `add` and no `pf.drop` (a page gets no drop).
 - Web plugins need WebView2 152 or newer (Windows updates it by itself); on an older one the
   fence shows 「这个插件需要更新 WebView2。」 instead of the page (PecoFence must be restarted
   after the update).
@@ -390,9 +413,10 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   or when one run (an event, a timer or an answer) would send more than 100 messages or 4 MB. In
   the page, `pf.post` returns a Promise: `null` once PecoFence handed the message on, a
   `RangeError` for one over 1 MB, an error while 64 messages still wait for `main.js`.
-- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message`, `theme`, `lang`
-  (`light` or `dark`) and, with `clipboard` `read` or `readwrite`, `clipboard`; `pf.theme`,
-  `pf.settings` and `pf.fence` follow them. A page gets no `start`: its scripts run when it loads.
+- The page's `pf.on` gets `show`, `hide`, `resize`, `settings`, `timechange`, `message`,
+  `theme` (`light` or `dark`), `lang`, `apps` with `apps`, `media` with `media`, and, with
+  `clipboard` `read` or `readwrite`, `clipboard`; `pf.theme`, `pf.settings` and `pf.fence` follow
+  them. A page gets no `start`: its scripts run when it loads.
   An error in a handler is caught and written to the page's console.
 - A web plugin's `main.js` need not call `pf.show`: the page is what the fence shows.
 
@@ -422,7 +446,7 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
 6. **Respect what users mark private.** Never try to get around PecoFence skipping private
    clipboard content.
 7. **Respect the services you call:** their terms, rate limits and `Retry-After`. No API keys in
-   the code; a key the user enters is a `text` setting.
+   the code; a key the user enters is a `secret` setting.
 8. **No tricks.** The code does the same during the checks as on a user's desktop: no waiting
    longer than a check runs before doing something, no looking for signs of a check. Text in the
    plugin that speaks to a reviewer or an AI, or claims the review is done, is itself a failure.
@@ -482,12 +506,14 @@ python3 tools/web-check.py plugins/my-plugin                # index.html: sectio
 `pecofence-plugin-check` answers `pf.http` with "offline" unless you give it answers:
 `--fixture answers.json` with `{ "https://wttr.in/": { "status": 200, "body": "..." } }` (the
 longest address that starts the request's address wins). It clicks every row and cell with an
-`id`, chooses each menu entry, sends each command, drops one file (`notes.txt`) on a plugin with
-`drop` and sends one `media` event to a plugin with `media`. Its fence has one launcher item,
-every file dialog is cancelled, a song plays, and no program of `apps` runs. Each check ends with
-`RESULT: PASS` or `RESULT: FAIL`; paste the last lines into the pull request. Then read your code
-once more against section 5: for every network call, link, clipboard access, program, folder,
-drop, launcher item, media call and program you watch, point to the manifest entry that allows it.
+`id`, chooses each menu entry (a row's too), sends each command, `enter`, `leave`, `wheel`,
+`change` and `submit` where the view has them, drops what `drop` takes (the file `notes.txt`, a
+text, a link) and sends one `media` and one `apps` event to a plugin with them. Its fence has one
+launcher item, every file dialog is cancelled, a song plays, and no program of `apps` runs. Each
+check ends with `RESULT: PASS` or `RESULT: FAIL`; paste the last lines into the pull request.
+Then read your code once more against section 5: for every network call, link, clipboard access,
+program, folder, drop, launcher item, media call and program you watch, point to the manifest
+entry that allows it.
 
 ## 9. Pull requests
 
