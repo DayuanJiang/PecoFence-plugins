@@ -28,7 +28,8 @@ FOLDERS = ["none", "read", "readwrite"]
 LOCAL = ("loopback", "lan")
 # Ports PecoFence refuses in permissions.local: debuggers and remote administration
 # (plugins.rs, REFUSED_PORTS).
-REFUSED_PORTS = {22, 23, 135, 139, 445, 2375, 2376, 3389, 5037, 5555, 5900, 5985, 5986, 6443, 9222, 9229, 10250}
+REFUSED_PORTS = {22, 23, 135, 139, 445, 2375, 2376, 3389, 4444, 5037, 5555, 5900, 5985, 5986, 6443, 9222, 9229, 9515,
+                 10250}
 # This computer by name, as PecoFence tells a loopback address (plugins.rs, local_class).
 LOOPBACK = re.compile(r"localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}")
 SETTING_TYPES = {"text", "number", "switch", "choice", "secret", "device"}
