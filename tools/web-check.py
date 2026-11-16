@@ -60,6 +60,10 @@ STUB = """
   const needFlag = (f) => () => P[f] ? "" : `permissions.${f} is not true`;
   const folders = { true: 1, read: 1, readwrite: 2 }[P.folders] || 0;
   const needFolders = (n) => () => folders >= n ? "" : n > 1 ? 'permissions.folders is not "readwrite"' : "permissions.folders does not read";
+  // The folder dialog picks this folder, as in pecofence-plugin-check; a change elsewhere rejects.
+  const SEP = String.fromCharCode(92), PICKED = ["C:", "Users", "me", "Documents", "Picked"].join(SEP);
+  const inPicked = (path) => () => needFolders(2)() || (String(path).split("/").join(SEP).toLowerCase().startsWith(PICKED.toLowerCase() + SEP) ? ""
+    : `rejected: ${path} is not inside a folder the user picked`);
   // pf.http: a network host, or a port of permissions.local: loopback on this computer by name,
   // lan only to the address typed in a device setting (none unless --settings gives one).
   const L = P.local || {}, devices = __DEVICES__;
@@ -117,9 +121,9 @@ STUB = """
     open: (u) => call("open", [u], pressNeeded("open", needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links"))),
     openSystem: (n) => call("openSystem", [n], () => n === "taskmgr" ? "" : `${n} is not a known system window`),
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
-    folder: { pick: () => call("folder.pick", [], needFolders(1), null), list: (p) => call("folder.list", [p], needFolders(1), []), read: (p) => call("folder.read", [p], needFolders(1), ""),
-              write: (p, t) => call("folder.write", [p, t], needFolders(2)), mkdir: (p) => call("folder.mkdir", [p], needFolders(2)),
-              trash: (p) => call("folder.trash", [p], needFolders(2)) },
+    folder: { pick: () => call("folder.pick", [], needFolders(1), PICKED), list: (p) => call("folder.list", [p], needFolders(1), []), read: (p) => call("folder.read", [p], needFolders(1), ""),
+              write: (p, t) => call("folder.write", [p, t], inPicked(p)), mkdir: (p) => call("folder.mkdir", [p], inPicked(p)),
+              trash: (p) => call("folder.trash", [p], inPicked(p), true) },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),
     // The shapes of AGENTS.md 3.1: one launcher item, the user cancels the dialog, a song plays.
     launch: { list: () => call("launch.list", [], needFlag("launch"), [{ id: "1", name: "notes.txt", icon: null }]),
