@@ -136,7 +136,7 @@ STUB = """
     open: (u) => call("open", [u], pressNeeded("open", needHost(u, [...(P.network || []), ...(P.links || [])], "network or permissions.links"))),
     openSystem: (n) => call("openSystem", [n], () => n === "taskmgr" ? "" : `${n} is not a known system window`),
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
-    folder: { pick: () => { picked = picked || !needFolders(1)(); return call("folder.pick", [], needFolders(1), PICKED); }, list: (p) => call("folder.list", [p], needFolders(1), []), read: (p) => call("folder.read", [p], needFolders(1), ""),
+    folder: { pick: () => { picked = picked || !needFolders(1)(); return call("folder.pick", [], needFolders(1), PICKED); }, list: (p) => call("folder.list", [p], needFolders(1), { items: [], cut: false }), read: (p) => call("folder.read", [p], needFolders(1), ""),
               write: (p, t) => call("folder.write", [p, t], inPicked("folder.write", p)), mkdir: (p) => call("folder.mkdir", [p], inPicked("folder.mkdir", p)),
               trash: (p) => call("folder.trash", [p], inPicked("folder.trash", p), true) },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),

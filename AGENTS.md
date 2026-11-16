@@ -181,11 +181,11 @@ thread:
 | `pf.openSystem("taskmgr")` | the name `taskmgr` (the only one for now) | `null`: Task Manager opens |
 | `pf.run(program, args)` | `program` one of the texts in `system`, written as there (only capital and small letters may differ: with `"system": ["ipconfig.exe"]`, `pf.run("ipconfig.exe", ["/all"])` runs and `pf.run("ipconfig")` is refused); `args` an array of texts; 允许插件使用 Windows 底层功能 turned on | `{ code, output }`: the exit code (`null` when there is none) and what the program wrote (standard output, then standard error), at most 1 MB. Programs it starts end with it, or at the 30 seconds limit |
 | `pf.folder.pick()` | `folders` | the path of the folder the user picked (PecoFence remembers it for this fence), or `null` when they cancelled |
-| `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `[{ name, path, folder, size, modified }]`, at most 10,000: `folder` is `true` for a folder, `modified` is in ms since 1970 |
+| `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `{ items: [{ name, path, folder, size, modified }], cut }`: at most 2,000 entries, `cut` is `true` when the folder has more; `folder` is `true` for a folder, `modified` is in ms since 1970 |
 | `pf.folder.read(path)` | the same | the file's text (UTF-8); in `main.js` at most what fits the 2 MB answer limit, in a web page at most 20 MB |
 | `pf.folder.write(path, text)` | `folders` `"readwrite"`; `path` a data file inside a picked folder (*Writing in folders* below) | `null`: the file holds `text` (UTF-8; a value that is not text is written as its JSON), at most 20 MB |
 | `pf.folder.mkdir(path)` | the same; `path` a new folder inside a picked folder, in a folder that is there | `null`, also when the folder was there |
-| `pf.folder.trash(path)` | the same; `path` a file or folder below a picked folder (not the picked folder itself) | `true`: it is in the Recycle Bin. A link or junction, something that cannot go to the Recycle Bin (on a network folder or a USB stick) and a path that is not there reject: nothing is ever deleted for good |
+| `pf.folder.trash(path)` | the same; `path` a data file or an empty folder below a picked folder (not the picked folder itself) | `true`: it is in the Recycle Bin. A link or junction, something that cannot go to the Recycle Bin (on a network folder or a USB stick, or larger than the drive's whole Recycle Bin) and a path that is not there reject: nothing is ever deleted for good |
 | `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
 | `pf.launch.list()` | `launch` | `[{ id, name, icon }]`: this fence's items, never a path. `icon` is the data name of the item's picture, `null` until PecoFence has made it (a `settings` event comes then) |
 | `pf.launch.pick(kind)` | `launch`; in a click, dblclick, command or submit handler | the item the user picked in a dialog (`kind` `"program"`: programs, `"folder"`: a folder, anything else: any file), `{ id, name, icon }`, or `null` when they cancelled |
@@ -258,20 +258,21 @@ reached only at the host the user typed in the plugin's `device` setting
 (`"http://" + pf.settings.host + ":8123/api/states"`), and only when that name or address is one
 of the local network: 10.x, 172.16.x to 172.31.x, 192.168.x, 169.254.x, 100.64.x to 100.127.x
 (Tailscale), fd00::/8, fe80::/10. PecoFence looks up the name for each connection and checks
-the address the connection goes to (IPv4 first; plain `http` goes to exactly the address it
-checked), never through a proxy. It does not look for devices: the user types the address. A
-redirect never changes the class: a request to the internet, to this computer or to the device
-goes on only to an address of the same kind (else `redirect refused`). Plain `http` is allowed
-here; a web page reaches these services only through `pf.http` (its own `fetch` is blocked).
-Ask nothing before the address is typed (the `device` setting is `null`): show what to fill in
-instead.
+that it resolved to an address of that kind, then connects only to an address it checked
+(IPv4 first), never through a proxy, and waits up to 120 seconds for the answer (a local model
+may think that long). It does not look for devices: the user types the address. A redirect
+never changes the class: a request to the internet, to this computer or to the device goes on
+only to an address of the same kind (else `redirect refused`). Plain `http` is allowed here; a
+web page reaches these services only through `pf.http` (its own `fetch` is blocked). Ask nothing
+before the address is typed (the `device` setting is `null`): show what to fill in instead.
 
 **Writing in folders.** `pf.folder.write`, `mkdir` and `trash` take a full path inside a folder
 the user picked for this fence, and check it each time, also its real path after links (for a
 file that is not there yet, its folder's): nothing in Windows, a program folder, ProgramData,
 AppData or PecoFence's own folders, nothing directly in a drive's root, in the user's folder
-itself or in `C:\Users`; no part of the path that starts with a dot (`.git`) or ends in a dot or
-a space, no colon past the drive, no device name (`con`, `nul`, ...). `write` takes only data
+itself or in `C:\Users`, nothing in a share of this computer (`\\localhost\...`); no part of
+the path that starts with a dot (`.git`) or ends in a dot or a space, no colon past the drive, no
+device name (`con`, `nul`, `com0`, ...). `write` takes only data
 files: `.txt`, `.md`, `.json`, `.csv`, `.log`, `.ics`, `.png`, `.jpg`, `.gif`, `.webp`, at most
 20 MB, written to a temporary file and then renamed, so a reader never finds half of it. With
 `"readwrite"`, `pf.folder.pick` asks for a folder the plugin may read and write, and refuses
@@ -361,12 +362,13 @@ out is no longer clickable.
 Pictures, charts and drawings are at most 2,000 DIPs tall.
 
 **Dragging out.** A row's `drag` starts when the user drags the row; PecoFence carries it and
-sends `dragend`. `file` is a data name of the plugin or a path inside a folder the user picked
-for this fence, of a file that is there and is a data file (`.txt`, `.md`, `.json`, `.csv`,
-`.log`, `.ics`, `.png`, `.jpg`, `.gif`, `.webp`); the target gets a copy, the file stays. `url` is
-an `http` or `https` address whose host is in `network` or `links`, as for `pf.open`. `text` is
-cut at 65,536 UTF-16 units. A `drag` with none or more than one of the three is left out. No
-permission is needed; a row whose drag breaks these rules cannot be dragged (the log says why).
+sends `dragend`. `file` is a data name of the plugin or, with `folders`, a path inside a folder
+the user picked for this fence, of a file that is there when the drag starts and is a data file
+(`.txt`, `.md`, `.json`, `.csv`, `.log`, `.ics`, `.png`, `.jpg`, `.gif`, `.webp`); the target gets
+a copy, the file stays. `url` is an `http` or `https` address whose host is in `network` or
+`links`, as for `pf.open`. `text` is cut at 65,536 UTF-16 units. A `drag` with none or more than
+one of the three is left out. No other permission is needed; a row whose drag breaks these rules
+cannot be dragged (the log says why).
 
 **The plugin's menu entries.** `pf.show({ rows, menu: [{ id, title }, { separator: true }] })`
 puts up to 8 entries at the end of the fence's right-click menu (more than 3 go into a submenu
@@ -455,10 +457,11 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   `pf.launch.pick` and `pf.media.control`: each press lets one such call through. The page has
   `pf.launch` without `add`. With `drop`, the page gets the `drop` event and `pf.drop` as in
   section 3.1: only the declared kinds (no folders, no other formats), and in place of `row`
-  (`null`) the point of the drop in the page, `x` and `y` in CSS pixels. The browser itself takes no drop from
-  outside. A drag the page starts works inside the page as in a browser; out of it, it goes only
-  with text, a link to a host in `network` or `links`, or a picture of the page's own files, never
-  a file of the computer (where WebView2 cannot check a drag, nothing is dragged out of a page).
+  (`null`) the point of the drop in the page, `x` and `y` in CSS pixels. The browser itself
+  takes no drop from outside. A drag the page starts works inside the page as in a browser; out
+  of it, it goes only with text, a link to a host in `network` or `links`, or a picture of the
+  page's own files, never a file of the computer (where WebView2 cannot check a drag, nothing is
+  dragged out of a page).
   The page reaches `local` services only through `pf.http`.
 - Web plugins need WebView2 152 or newer (Windows updates it by itself); on an older one the
   fence shows 「这个插件需要更新 WebView2。」 instead of the page (PecoFence must be restarted

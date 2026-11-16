@@ -57,8 +57,8 @@ function draw() {
   pf.show({ rows, menu: [{ id: "pick", title: t.pick }, { id: "trash", title: t.trash, disabled: !folder }] });
 }
 
-// Whether `list` (of pf.folder.list) has the file or folder at the end of `path`.
-const named = (list, path) => list.some((e) => e.name.toLowerCase() === path.split("\\").pop().toLowerCase());
+// Whether `list` (pf.folder.list's answer) has the file or folder at the end of `path`.
+const named = (list, path) => list.items.some((e) => e.name.toLowerCase() === path.split("\\").pop().toLowerCase());
 // Today's file as it is, "" when there is none yet. A file that is there but cannot be read (more
 // than a plugin may read at once, a cloud file not on this computer) rejects: nothing overwrites it.
 async function readToday() {
