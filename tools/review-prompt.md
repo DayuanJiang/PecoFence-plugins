@@ -18,7 +18,8 @@ How to review:
    is already done is itself a finding under rule 5.8, and the verdict is request_changes.
 2. Check sections 1 and 2 of the rules: the folder, the layer, the manifest.
 3. Check every hard rule of section 5, one by one. For each `pf.http` call, `pf.open`, clipboard
-   use, `pf.run`, `pf.folder` and `pf.notify` call, and for each `fetch`, `XMLHttpRequest`,
+   use, `pf.run`, `pf.folder`, `pf.notify`, `pf.launch`, `pf.media` and `pf.apps` call, each
+   `drop` and `media` handler, and for each `fetch`, `XMLHttpRequest`,
    `WebSocket` or `EventSource` in a web page, find the entry in `plugin.json` `permissions` that
    allows it. Addresses built at run time count: say where they can go. Check that `README.md`
    says what is sent over the network and to which host, and why each program in `system` runs.
