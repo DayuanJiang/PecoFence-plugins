@@ -290,6 +290,8 @@ def check_manifest(m, pid):
         fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
              "no empty part and no '..') or a name in System32 (x.exe)")
     check_api2(p, m.get("api"), m.get("settings"))
+    if m.get("layer") == "web" and p.get("drop"):
+        fail("permissions.drop is for light plugins: a web plugin's fence takes no drops")
     settings = m.get("settings", [])
     if not isinstance(settings, list) or len(settings) > 20:
         fail("settings is a list of at most 20")
