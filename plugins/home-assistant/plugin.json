@@ -36,7 +36,7 @@
     },
     {
       "key": "entities", "type": "text", "default": "",
-      "label": { "en": "Entities to show (comma-separated; empty: all)", "zh-CN": "要显示的实体（用逗号分开；空着就显示全部）", "zh-TW": "要顯示的實體（用逗號分開；空著就顯示全部）", "ja": "表示するエンティティ（カンマ区切り、空欄ならすべて）", "ko": "표시할 엔티티 (쉼표로 구분, 비우면 전부)", "de": "Angezeigte Entitäten (durch Kommas getrennt; leer: alle)", "fr": "Entités à afficher (virgules entre elles ; vide : toutes)", "es": "Entidades que mostrar (separadas por comas; vacío: todas)", "pt-BR": "Entidades a mostrar (separadas por vírgulas; vazio: todas)", "ru": "Показываемые объекты (через запятую; пусто: все)", "it": "Entità da mostrare (separate da virgole; vuoto: tutte)" }
+      "label": {"en": "Entities to show (comma-separated; empty: the first 30)", "zh-CN": "要显示的实体（用逗号分开；空着就显示前 30 个）", "zh-TW": "要顯示的實體（用逗號分開；空著就顯示前 30 個）", "ja": "表示するエンティティ（カンマ区切り、空欄なら最初の 30 個）", "ko": "표시할 엔티티 (쉼표로 구분, 비우면 처음 30개)", "de": "Angezeigte Entitäten (mit Kommas; leer: die ersten 30)", "fr": "Entités, séparées par des virgules (vide : les 30 premières)", "es": "Entidades, separadas por comas (vacío: las 30 primeras)", "pt-BR": "Entidades, separadas por vírgulas (vazio: as 30 primeiras)", "ru": "Показываемые объекты (через запятую; пусто: первые 30)", "it": "Entità da mostrare (separate da virgole; vuoto: le prime 30)"}
     }
   ]
 }
