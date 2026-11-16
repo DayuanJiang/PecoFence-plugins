@@ -57,11 +57,21 @@ function draw() {
   pf.show({ rows, menu: [{ id: "pick", title: t.pick }, { id: "trash", title: t.trash, disabled: !folder }] });
 }
 
+// Whether `list` (of pf.folder.list) has the file or folder at the end of `path`.
+const named = (list, path) => list.some((e) => e.name.toLowerCase() === path.split("\\").pop().toLowerCase());
+// Today's file as it is, "" when there is none yet. A file that is there but cannot be read (more
+// than a plugin may read at once, a cloud file not on this computer) rejects: nothing overwrites it.
+async function readToday() {
+  const { dir, file } = today();
+  if (!named(await pf.folder.list(folder), dir)) return "";
+  return named(await pf.folder.list(dir), file) ? pf.folder.read(file) : "";
+}
+
 async function load() {
   folder = (await pf.data.read(kept())) || null;
   lines = [];
   if (folder) {
-    const text = await pf.folder.read(today().file).catch(() => "");
+    const text = await readToday().catch(() => "");
     lines = text.split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2));
   }
   draw();
@@ -75,19 +85,26 @@ async function pick() {
   load();
 }
 
-async function log(text) {
+// One line after another: a second Ctrl+Enter waits for the first, so no line is lost.
+let queue = Promise.resolve();
+function log(text) {
+  queue = queue.then(() => append(text)).catch(() => {});
+}
+
+async function append(text) {
   const line = pf.time.format(pf.time.now(), "time") + " " + text.replace(/\s*\n\s*/g, " ").trim();
   const { dir, file } = today();
   try {
     await pf.folder.mkdir(dir);
-    const before = await pf.folder.read(file).catch(() => "");
-    await pf.folder.write(file, (before || "# " + file.split("\\").pop().slice(0, -3) + "\n\n") + "- " + line + "\n");
-    draft = "";
+    const before = (await readToday()) || "# " + file.split("\\").pop().slice(0, -3) + "\n\n";
+    await pf.folder.write(file, before + "- " + line + "\n");
+    // Only this line's draft: what was typed meanwhile stays in the box.
+    if (draft === text) draft = "";
     problem = "";
   } catch (e) {
     problem = e.message;
   }
-  load();
+  await load();
 }
 
 pf.on("start", load);
