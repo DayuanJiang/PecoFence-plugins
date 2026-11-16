@@ -495,6 +495,9 @@ def check_code(files, p, layer):
     for h in sorted(network):
         if h not in readme:
             fail(f"README.md does not say what is sent to {h}")
+    for e in [e for c in LOCAL for e in (p.get("local") or {}).get(c, [])] if ports else []:
+        if e["app"].lower() not in readme.lower():
+            fail(f"README.md does not say what is sent to {e['app']} (port {e['port']})")
     for prog in p.get("system", []):
         if prog.lower() not in readme.lower():
             fail(f"README.md does not say why the plugin starts {prog}")
