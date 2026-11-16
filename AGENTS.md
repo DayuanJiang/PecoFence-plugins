@@ -63,7 +63,9 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 ```
 
 - `version` and `minPecoFence` are `x.y.z`. Raise `version` in every pull request that changes the
-  plugin. `api` is the plugin interface version, `1` for everything in this file.
+  plugin. `api` is the plugin interface version: `2` for a plugin that uses any of `commands`,
+  `drop`, `launch`, `media` or `apps` (with `minPecoFence` `0.5.0` or later), else `1`. A
+  PecoFence that knows only interface 1 shows such a plugin as 需要更新 PecoFence.
 - `name` (at most 60 characters) and `description` (at most 300) need `en`; add the languages you
   can: `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt-BR`, `ru`, `it`.
 - `author` is the GitHub account that owns the plugin. Only that account can change it later.
@@ -79,6 +81,11 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   | `system` | programs `pf.run` may start, at most 20, each ending in `.exe`: a full path (`C:\Tools\tool.exe`, no empty part and no `..`), or the name of a program in `C:\Windows\System32` (`ipconfig.exe`). Works only when the user turns on 允许插件使用 Windows 底层功能, and every update asks the user again |
   | `folders` | the plugin may ask the user to pick a folder and read it (read-only) |
   | `notify` | the plugin may show a notice card and play a sound |
+  | `commands` | at most 8 `{ "id": "show", "title": { "en": "Show the launcher" } }`: actions the user can give a shortcut in the plugin's details (event `command`). `id` 1 to 32 letters, digits and `-`, each once (`Show` and `show` are two); `title` needs `en`, at most 40 characters. A plugin cannot bring its own key. The warning says "Has these commands: …. You can give them shortcuts in the plugin's details" |
+  | `drop` | `["files"]`: files may be dropped on the fence (event `drop`). Text and links come later. The warning says "It can read the files and text you drag onto it" |
+  | `launch` | `true`: the fence keeps the files, folders and programs the user puts into it and opens them (`pf.launch`). The warning says "Open the files, folders and programs you put into this fence" |
+  | `media` | `read`: sees what Windows' media session plays now (`pf.media.current`, event `media`); `control`: may also pause it and skip (`pf.media.control`). The warning says "Sees the song or video playing now: its title, artist, album and cover", with `control` ", and can pause it and skip" |
+  | `apps` | at most 20 program names ending in `.exe`, without a path (`spotify.exe`): `pf.apps.running` tells which of them run. The warning says "Knows whether these programs run: spotify.exe" |
 
 - `settings`: what the fence menu's 插件设置 offers, at most 20. Each has a `key` (letters and
   digits), a `type` (`text`, `number`, `switch`, or `choice` with 1 to 50 `options`:
@@ -86,8 +93,10 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   that type. Each fence of the plugin keeps its own settings.
 - Users see the permissions in plain words before they install. An update that asks for more
   (a new host, reading or writing the clipboard where it did not before, another `layer`,
-  `background`, `folders` or `notify` turned on, a new program) waits until the user agrees. So
-  does an update whose `author` differs from the installed one; its warning names both.
+  `background`, `folders`, `notify` or `launch` turned on, a new program in `system` or `apps`, a
+  new command `id`, a new kind of `drop`, `media` from none to `read` or from `read` to `control`)
+  waits until the user agrees. So does an update whose `author` differs from the installed one;
+  its warning names both.
 - In the first minute after an update, PecoFence goes back to the version before when the new
   one stops (a limit, or an error in `main.js` itself), or when errors nobody catches (in a
   handler, or in a web page) come 3 times; it stays on the version before until a newer one
@@ -96,7 +105,7 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 ## 3. The light layer: `main.js`
 
 *Written by hand from PecoFence's code (`crates/plugin-host` for `pf` and the view, the app's
-`light_host.rs` for the answers), 2026-11-15. It becomes generated from that code when the
+`light_host.rs` for the answers), 2026-11-16. It becomes generated from that code when the
 interface is final.*
 
 `main.js` is plain JavaScript (ES2023, no modules). It runs once when the fence first shows, then
@@ -160,6 +169,14 @@ thread:
 | `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `[{ name, path, folder, size, modified }]`, at most 10,000: `folder` is `true` for a folder, `modified` is in ms since 1970 |
 | `pf.folder.read(path)` | the same | the file's text (UTF-8), at most 20 MB |
 | `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
+| `pf.launch.list()` | `launch` | `[{ id, name, icon }]`: this fence's items, never a path. `icon` is the data name of the item's picture, `null` until PecoFence has made it (a `settings` event comes then) |
+| `pf.launch.pick(kind)` | `launch`; in a click, dblclick or command handler | the item the user picked in a file dialog (`kind` `"program"`: programs, anything else: any file), `{ id, name, icon }`, or `null` when they cancelled |
+| `pf.launch.add(numbers)` | `launch`; only in a `drop` handler | `[{ id, name, icon }]` of the items added: the files of this drop with these numbers (`[0, 1]`), all of them in one call. A file of PecoFence's own folder or a shortcut to one is not added, a path only once, at most 200 items a fence |
+| `pf.launch.remove(id)` | `launch` | `true`, or `false` when there is no such item. The user can also remove items in the plugin's details |
+| `pf.launch.open(id)` | `launch`; in a click, dblclick or command handler | `null`: the item opens as a fence icon opens (a shortcut with its own arguments); the plugin adds no arguments |
+| `pf.media.current()` | `media` `read` or `control` | what plays now, or `null`: `{ title, artist, album, playing, position, duration, cover, app }`, `position` and `duration` in seconds; `cover` the data name of its picture (`media-cover-...png` or `.jpg`) or `null`; `app` the program as written in `apps` when the player is one of them (`MSEdge` is `msedge.exe`), else `null`. Apps leave out what they do not know (Edge gives no album) |
+| `pf.media.control(action)` | `media` `control`; `action` `"playpause"`, `"next"` or `"previous"`; in a click, dblclick or command handler | `true` when the player took it. Read `pf.media.current()` again for the new state |
+| `pf.apps.running()` | `apps` | the programs of `apps` that run in this sign-in session, as written there. PecoFence looks every 5 seconds, so call it at most that often |
 
 A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting or ending
 with a dot, and not a device name (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`,
@@ -179,7 +196,7 @@ one fence keeps that way; other files stay until the plugin is uninstalled.
 **Refused calls throw.** A call the manifest does not allow does not return a Promise: it throws
 an `Error` at once that says what it needs, such as `http.get needs an https address with
 example.com in permissions.network`, `clipboard.text needs permissions.clipboard read` or
-`pf.open works only in a click or dblclick handler`. So does a call past the calls a plugin may
+`pf.open works only in a click, dblclick or command handler`. So does a call past the calls a plugin may
 have under way: `http.get: too many calls at once (at most 4 requests and 16 calls)`. Put calls
 that can be refused in `try` (an error that escapes ends the handler there, section 3.2), and
 queue many calls (removing 30 files) instead of making them all at once.
@@ -206,8 +223,14 @@ out. The User-Agent is `PecoFence-plugin/<id> <version>`: a `User-Agent` or `Hos
 plugin is left out, as is a header whose value is not text. Windows gives up after 15 seconds
 without a connection and 30 seconds without an answer.
 
-**`pf.open` needs the click.** It works only while a `click` or `dblclick` handler runs: call it
-before the handler's first `await`.
+**Some calls need the user.** `pf.open`, `pf.launch.open`, `pf.launch.pick` and
+`pf.media.control` work only while a `click`, `dblclick` or `command` handler runs, and
+`pf.launch.add` only while a `drop` handler runs: call them before the handler's first `await`.
+
+**Items and shortcuts belong to the user.** PecoFence keeps a fence's launcher items (with their
+paths) and its command shortcuts in its configuration; importing someone else's configuration
+leaves them out. A shortcut goes when its fence is deleted, the plugin is uninstalled or taken
+down, an update drops the command, or the plugin stops for the third time within an hour.
 
 ### 3.2 Events
 
@@ -227,6 +250,9 @@ before the handler's first `await`.
 | `timechange` | the system time, the time zone or the region format changed | none |
 | `stop` | the fence goes away, the plugin starts again or is updated, or PecoFence quits. The handler has its 50 ms as any run. The calls it makes then are sent (at most 16 at once, as always), but their Promises never settle: the plugin is gone when the answers come, so it cannot wait for one | none |
 | `message` | a web plugin's page called `pf.post(data)` (section 4) | `data` |
+| `command` | the user chose one of the plugin's menu entries (section 3.3), or pressed the shortcut of one of its `commands`. A shortcut first brings this fence up alone over all windows, as 速览 (Peek) does; pressed again, the fence goes back | `{ id, via }`: `via` is `"menu"` or `"key"` |
+| `drop` | files were dropped on the fence (with `drop` `files`): at most 20 at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }] }`: names and sizes in bytes only, never paths |
+| `media` | what plays changed (with `media`): at most once a second, once a second while it plays; not while the fence is hidden (unless `background`) | none: call `pf.media.current()` |
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
 PecoFence writes it to its log (the plugin, the event, the message and the first line of the
@@ -268,6 +294,13 @@ out is no longer clickable.
 | `follow` | any text: the row after this one stays in view as rows are added (a log) |
 
 Pictures, charts and drawings are at most 2,000 DIPs tall.
+
+**The plugin's menu entries.** `pf.show({ rows, menu: [{ id, title }, { separator: true }] })`
+puts up to 8 entries at the end of the fence's right-click menu (more than 3 go into a submenu
+named after the plugin). Each `pf.show` sets them anew, so give `menu` in every one. A title is
+plain text, one line of at most 40 characters (longer is cut); an entry may have
+`checked: true` or `disabled: true`. Choosing one sends `command` with `{ id, via: "menu" }`. No
+permission is needed.
 
 A cell has any of:
 
@@ -371,8 +404,9 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
    `Function(...)`, strings passed to `setTimeout` or `setInterval`, dynamic `import()`,
    `importScripts`, `WebAssembly`. A library you include is its readable source with its license
    header, named with its version in `README.md`.
-2. **Only what the manifest declares:** every host, link, clipboard use, program, folder and
-   notice. Every address written in the code has its host in `network` or `links`.
+2. **Only what the manifest declares:** every host, link, clipboard use, program, folder,
+   notice, drop, launcher, media use and watched program. Every address written in the code has
+   its host in `network` or `links`.
 3. **A web page loads nothing from the network** but data from the hosts in `network`: no
    scripts, styles, fonts or pictures from other sites, no `<iframe>` (also none made in a script)
    and nothing that reaches into a frame's window (`contentWindow`, `contentDocument`, `frames[ ]`),
@@ -380,7 +414,8 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
    `preconnect` (the browser connects to those hosts ahead, past the CSP).
 4. **Nothing sent in secret.** Send only what the plugin's visible purpose needs, and say in
    `README.md` what is sent and to which host. Never send the user's files, file names, folder
-   contents, clipboard, typed text or computer details unless that is the plugin's stated purpose.
+   contents, clipboard, typed text, computer details, what plays or which programs run unless
+   that is the plugin's stated purpose.
 5. **Leave the system alone.** `pf.run` starts only the programs in `system`, for the purpose
    `README.md` states. No changes to autostart, scheduled tasks, services, the firewall, security
    software or system settings; no administrator rights; no ending other programs.
@@ -446,10 +481,13 @@ python3 tools/web-check.py plugins/my-plugin                # index.html: sectio
 
 `pecofence-plugin-check` answers `pf.http` with "offline" unless you give it answers:
 `--fixture answers.json` with `{ "https://wttr.in/": { "status": 200, "body": "..." } }` (the
-longest address that starts the request's address wins). Each check ends with `RESULT: PASS` or
-`RESULT: FAIL`; paste the last lines into the pull request. Then read your code once more against
-section 5: for every network call, link, clipboard access, program and folder, point to the
-manifest entry that allows it.
+longest address that starts the request's address wins). It clicks every row and cell with an
+`id`, chooses each menu entry, sends each command, drops one file (`notes.txt`) on a plugin with
+`drop` and sends one `media` event to a plugin with `media`. Its fence has one launcher item,
+every file dialog is cancelled, a song plays, and no program of `apps` runs. Each check ends with
+`RESULT: PASS` or `RESULT: FAIL`; paste the last lines into the pull request. Then read your code
+once more against section 5: for every network call, link, clipboard access, program, folder,
+drop, launcher item, media call and program you watch, point to the manifest entry that allows it.
 
 ## 9. Pull requests
 
