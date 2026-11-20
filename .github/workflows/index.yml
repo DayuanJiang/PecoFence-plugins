@@ -37,8 +37,11 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # The raw file: the contents API's JSON leaves "content" empty for a file over 1 MB.
+          # The signature too: a new key signs the same index.json differently (Ed25519 signs the
+          # same bytes the same way, so an unchanged key and index publish nothing).
           current=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/index.json?ref=index" 2>/dev/null || true)
-          if [ "$current" = "$(cat "$RUNNER_TEMP/feed/index.json")" ]; then echo "index.json unchanged"; exit 0; fi
+          current_sig=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/index.json.sig?ref=index" 2>/dev/null || true)
+          if [ "$current" = "$(cat "$RUNNER_TEMP/feed/index.json")" ] && [ "$current_sig" = "$(cat "$RUNNER_TEMP/feed/index.json.sig")" ]; then echo "index.json unchanged"; exit 0; fi
           cd "$RUNNER_TEMP/feed"
           git init -q -b index
           git config user.name "github-actions[bot]"
