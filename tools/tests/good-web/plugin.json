@@ -1,0 +1,6 @@
+{
+  "id": "good-web", "version": "1.0.0", "api": 1, "layer": "web",
+  "name": { "en": "Good: web page" },
+  "description": { "en": "Test plugin for the checks: the smallest web page that passes them." },
+  "author": "DayuanJiang", "minPecoFence": "0.5.0", "permissions": {}
+}

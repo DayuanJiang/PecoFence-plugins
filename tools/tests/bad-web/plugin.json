@@ -1,0 +1,6 @@
+{
+  "id": "bad-web", "version": "1.0.0", "api": 1, "layer": "web",
+  "name": { "en": "Bad: web page" },
+  "description": { "en": "Test plugin for the checks: loads a script from a CDN and reaches hosts it does not declare." },
+  "author": "DayuanJiang", "minPecoFence": "0.5.0", "permissions": { "network": ["api.github.com"] }
+}

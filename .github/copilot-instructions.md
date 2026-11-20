@@ -1,7 +1,7 @@
 # Instructions for Copilot
 
 This repository holds community plugins for PecoFence. `AGENTS.md` at the root is the standard for
-everything here: follow it when you help write a plugin, and run the two self-checks it names
+everything here: follow it when you help write a plugin, and run the self-checks it names
 before the pull request. Pull requests are reviewed automatically against the same file
 (`tools/review.py`).
 

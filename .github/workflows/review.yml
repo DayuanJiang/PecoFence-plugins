@@ -6,31 +6,46 @@ name: review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+  # A first-time contributor's checks wait for the owner's approval; the review that gave up
+  # waiting for them (its comment says so) runs here once they completed, from main as well.
+  workflow_run:
+    workflows: [checks]
+    types: [completed]
 permissions:
   contents: read
   pull-requests: write
+  # The review waits for the static check of the same commit (tools/review.py).
+  checks: read
   id-token: write
 concurrency:
-  group: review-${{ github.event.pull_request.number }}
+  group: review-${{ github.event.pull_request.number || github.event.workflow_run.head_sha }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: ${{ !github.event.pull_request.draft }}
+    if: >-
+      ${{ github.event_name == 'pull_request_target' && !github.event.pull_request.draft
+      || github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' }}
     runs-on: ubuntu-latest
+    # At most 20 minutes waiting for the static check, then the review itself.
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      # Actions by commit, packages by version: what runs next to the AWS role changes only
+      # through a change to this repository.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install the Anthropic SDK (before the AWS credentials exist)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check -r tools/review-requirements.txt
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: arn:aws:iam::904233105607:role/pecofence-plugins-review
           aws-region: us-east-1
-      - name: Install the Anthropic SDK
-        run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet --disable-pip-version-check "anthropic[bedrock]"
       - name: Review
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # One of the two: the pull request, or the commit whose checks completed.
           PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: '"$RUNNER_TEMP/venv/bin/python" -I tools/review.py'

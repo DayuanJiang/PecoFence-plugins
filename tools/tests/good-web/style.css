@@ -1,0 +1,3 @@
+body { margin: 8px; font: 14px "Segoe UI", sans-serif; background: transparent; }
+body.dark { color: #eee; }
+body.light { color: #222; }
