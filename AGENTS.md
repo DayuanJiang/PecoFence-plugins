@@ -377,6 +377,12 @@ plain text, one line of at most 40 characters (longer is cut); an entry may have
 `checked: true` or `disabled: true`. Choosing one sends `command` with `{ id, via: "menu" }`. No
 permission is needed.
 
+**The rolled title.** `pf.show({ rows, caption: "9:41" })` gives the text the fence's title row
+shows in place of its name while the fence is rolled up (the 时钟 plugin shows the time there, 倒数日
+the nearest date). One line of plain text, at most 24 characters (longer is cut); no `caption`, or an
+empty one, shows the name. Like `menu`, give it in every `pf.show`. Open, the title row shows the
+name. No permission is needed.
+
 A cell has any of:
 
 | Cell field | Meaning |
