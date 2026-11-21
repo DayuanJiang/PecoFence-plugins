@@ -16,8 +16,8 @@ env:
   # The PecoFence commit whose crates/plugin-check the run check uses. It must be a commit pushed
   # to DayuanJiang/PecoFence that has the plugin host PecoFence ships (the owner sets it after
   # pushing PecoFence; README.md lists it). Raise it when PecoFence's plugin host changes.
-  # For now the head of PecoFence's plugin-system branch (draft PR #239), until it merges into main.
-  PECOFENCE_COMMIT: ad8ec6a5a4cbd5a152a8d0c2940f1db266eea0c9
+  # main after the plugin system merged (PR #239), with the release index key.
+  PECOFENCE_COMMIT: 2cba9c302f5f3a06c97e013d495470f78fbac98b
   PLAYWRIGHT_VERSION: 1.65.2
 
 jobs:
