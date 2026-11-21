@@ -594,7 +594,8 @@ you watch, point to the manifest entry that allows it.
   changed.
 - The checks report what fails, and the review requests changes with each broken rule. Fix it and
   push; everything runs again. When everything passes, the pull request is merged, and the plugin
-  appears in PecoFence's list within an hour.
+  appears in PecoFence's list a few minutes later (the list is read again each time 设置 › 小工具
+  opens).
 - The rules live only in this file at the root. A pull request that changes it, or anything
   outside its one plugin folder, fails.
 - Do not mention the maintainer: nobody reads the pull request unless something is wrong.

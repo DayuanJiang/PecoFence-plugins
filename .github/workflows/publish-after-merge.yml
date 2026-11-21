@@ -1,0 +1,43 @@
+# A plugin the automation merged reaches the index within minutes. A merge made with the workflow
+# token starts no other workflow, so index.json used to wait for the hourly run. When a pull
+# request's checks or its review finish, this waits up to ten minutes for the auto-merge and then
+# starts the index workflow. It reads the pull request through the API only and runs no code of it.
+name: publish after merge
+on:
+  workflow_run:
+    workflows: [checks, review]
+    types: [completed]
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+concurrency:
+  group: publish-after-merge-${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  dispatch:
+    if: >-
+      ${{ github.event.workflow_run.event == 'pull_request'
+      || github.event.workflow_run.event == 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for the merge, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].number // empty' 2>/dev/null || true)
+          [ -n "$pr" ] || pr=$(gh pr list --repo "$REPO" --state all --search "$SHA" --json number --jq '.[0].number // empty')
+          [ -n "$pr" ] || { echo "no pull request has $SHA"; exit 0; }
+          for i in $(seq 1 20); do
+            state=$(gh pr view "$pr" --repo "$REPO" --json state,headRefOid --jq '"\(.state) \(.headRefOid)"')
+            case "$state" in
+              "MERGED "*) echo "#$pr is merged: publishing the index"; gh workflow run index.yml --repo "$REPO" --ref main; exit 0 ;;
+              "CLOSED "*) echo "#$pr was closed without a merge"; exit 0 ;;
+            esac
+            [ "${state#* }" = "$SHA" ] || { echo "#$pr has a newer commit: its own runs follow"; exit 0; }
+            sleep 30
+          done
+          echo "#$pr is not merged after ten minutes: the hourly index run publishes it"
