@@ -38,8 +38,11 @@ const EXAMPLE = {
 };
 const DAY = 24 * 60 * 60 * 1000;
 let shown = "";
+// The nearest date to come and its days: the title row shows it while the fence is rolled up.
+let nearest;
 
 const fill = (text, n) => text.replace("{0}", String(n));
+const when = (days) => (days === 0 ? t.today : days === 1 ? t.tomorrow : fill(t.left, days));
 
 // Days from today to year-month-day, counted on the calendar (no clock time involved).
 function daysUntil(today, y, m, d) {
@@ -70,9 +73,10 @@ function rows() {
   const entries = String(dates || "").split(/[;；\n]/).map((s) => s.trim()).filter(Boolean);
   const items = entries.map((e) => parse(e, today));
   const upcoming = items.filter((i) => i.days >= 0).sort((a, b) => a.days - b.days);
+  nearest = upcoming.length ? `${upcoming[0].name} ${when(upcoming[0].days)}` : undefined;
   const past = pf.settings.past ? items.filter((i) => i.days < 0).sort((a, b) => b.days - a.days) : [];
   const out = upcoming.map((i) => ({
-    text: `${i.name}  ${i.days === 0 ? t.today : i.days === 1 ? t.tomorrow : fill(t.left, i.days)}`,
+    text: `${i.name}  ${when(i.days)}`,
     color: i.days <= 1 ? "green" : undefined,
     bold: i.days === 0 || undefined,
   }));
@@ -83,7 +87,7 @@ function rows() {
 
 // Shows the rows only when they changed: once a day, or when the settings change.
 function draw() {
-  const view = { rows: rows() };
+  const view = { rows: rows(), caption: nearest };
   const json = JSON.stringify(view);
   if (json !== shown) {
     shown = json;
