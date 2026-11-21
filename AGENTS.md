@@ -294,7 +294,7 @@ plugin stops for the third time within an hour.
 | Event | When | `data` |
 |---|---|---|
 | `start` | the fence first shows, or the plugin starts again; always the first event | none |
-| `show`, `hide` | the fence shows again, or it is rolled up, hidden with the desktop, moved to another virtual desktop, or PecoFence pauses. A fence covered by a window still shows. A fence that starts hidden gets `hide` right after `start` | none |
+| `show`, `hide` | the fence shows again, or it is rolled up, hidden with the desktop, moved to another virtual desktop, or PecoFence pauses. A fence covered by a window still shows; a rolled fence whose title row shows the plugin's `caption` counts as shown, so its timers go on. A fence that starts hidden gets `hide` right after `start` | none |
 | `resize` | the fence's content changed size | `{ width, height }` (also in `pf.fence`) |
 | `click` | a click on a row or a cell with an `id` | `{ id }` |
 | `dblclick` | a double-click on a row with an `id`. On a button cell the second click sends `click`, then `dblclick` | `{ id }` |
@@ -376,6 +376,13 @@ named after the plugin). Each `pf.show` sets them anew, so give `menu` in every 
 plain text, one line of at most 40 characters (longer is cut); an entry may have
 `checked: true` or `disabled: true`. Choosing one sends `command` with `{ id, via: "menu" }`. No
 permission is needed.
+
+**The rolled title.** `pf.show({ rows, caption: "9:41" })` gives the text the fence's title row
+shows in place of its name while the fence is rolled up (the 时钟 plugin shows the time there, 倒数日
+the nearest date). One line of plain text, at most 24 characters (longer is cut); no `caption`, or an
+empty one, shows the name. Like `menu`, give it in every `pf.show`. Open, the title row shows the
+name. While the title row shows a caption the plugin counts as shown (no `hide`), so a timer can keep
+it up to date. No permission is needed.
 
 A cell has any of:
 
