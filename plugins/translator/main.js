@@ -370,7 +370,7 @@ async function translate() {
   }
   saveUsage();
   if (done) {
-    if (done !== wanted) note = fmt(t.fellBack, ENGINES[wanted].name, ENGINES[done].name);
+    if (done !== wanted) note = fmt(t.fellBack, ENGINES[wanted].name, ENGINES[done].name) + (why ? " (" + why + ")" : "");
     state.engine = done;
   } else {
     // MyMemory needs no sign-up and comes last: when it cannot help either, say where to get a key
