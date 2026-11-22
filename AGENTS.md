@@ -26,7 +26,7 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
 - Every folder may also have `screenshot.png` (one picture of the fence, at most 300 KB).
 - `<id>`: lower-case letters, digits and `-`, 3 to 40 characters, never changed after it is merged.
-- Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 1 MB, any other file at
+- Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 512 KB (PecoFence 0.6.0 measured that a larger one does not start in the 8 MB engine), any other file at
   most 5 MB, the whole folder at most 20 MB and 500 files. A plugin past the sizes of interface 2
   (`main.js` 200 KB, another file 1 MB, 5 MB and 100 files in all) needs `api: 3` (section 2).
 - The automatic review (section 9) reads at most 1 MB of text: the `.json`, `.js`, `.html`,

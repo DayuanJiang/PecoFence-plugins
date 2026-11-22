@@ -58,7 +58,7 @@ SIZES = {"plugin.json": 64 << 10, "README.md": 64 << 10, "main.js": 200 << 10, "
 OTHER_SIZE, TOTAL_SIZE, MAX_FILES = 1 << 20, 5 << 20, 100
 # Interface 3's sizes (PecoFence's FILES, OTHER_SIZE, MAX_FILES, MAX_TOTAL from 0.6.0); the ones
 # above are interface 2's, which PecoFence 0.5.0 keeps to.
-SIZES3 = {**SIZES, "main.js": 1 << 20}
+SIZES3 = {**SIZES, "main.js": 512 << 10}
 OTHER_SIZE3, TOTAL_SIZE3, MAX_FILES3 = 5 << 20, 20 << 20, 500
 # Library files whose official SHA-256 is listed (L6): named in the review, not read, and free of
 # the text rules; adding one is a pull request that changes only libraries.json.
