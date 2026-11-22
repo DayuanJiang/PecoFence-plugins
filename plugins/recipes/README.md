@@ -15,10 +15,10 @@ has.
 
 | Source | Needs | What it gives |
 |---|---|---|
-| [TheMealDB](https://www.themealdb.com) | nothing | a random meal from its open database, with its photo; the public test key `1` its documentation gives for development and learning is in the address |
 | [DummyJSON](https://dummyjson.com/docs/recipes) | nothing | about 50 sample recipes with a photo, each shown once before it comes back |
 | [Wikibooks Cookbook](https://en.wikibooks.org/wiki/Cookbook:Table_of_Contents) | nothing | a random page of the Cookbook, when it is a recipe (it has ingredients and a procedure); some pages have a photo. The text is under a CC BY-SA licence: the idea says "CC BY-SA" and the title's link goes to the page, where its authors are |
 | [Forkify](https://forkify-api.jonas.io) | nothing | the ingredients and the photo of a recipe of a food site; the steps are on that site's page (the title opens it) |
+| [TheMealDB](https://www.themealdb.com) | your own supporter key | a random meal from its database, with its photo. Its free test key is for development and learning only, and its terms do not let an app published in an app store use it, so the plugin never uses it |
 | [Spoonacular](https://spoonacular.com/food-api) | your own free key | a random recipe with its photo; the free plan has a daily quota |
 | [Recipe API](https://recipe-api.com) | your own free key | a recipe with ingredients and steps, no photo; the free evaluation gives a small number of recipes in all |
 | [Tasty](https://rapidapi.com/apidojo/api/tasty) | your own free RapidAPI key | a recipe with its photo from BuzzFeed's Tasty; the free plan has a monthly quota |
@@ -27,7 +27,7 @@ The recipes are in English: the services do not translate them. The plugin's own
 PecoFence's display language.
 
 Setting **Source**: *Automatic* goes through the sources in the order of the table (those that need
-a key only when one is typed). A source that fails, says to wait (`Retry-After`), has used up its
+a key only when one is typed: without a key, DummyJSON, Wikibooks and Forkify). A source that fails, says to wait (`Retry-After`), has used up its
 free quota or has nothing new to show (three ideas in a row already shown, or all of DummyJSON's
 shown) is left alone for a while (15 minutes to 12 hours, until midnight UTC for a used-up daily
 quota) and the next one gives the idea. When every source rests, the fence says until when and
@@ -45,8 +45,9 @@ caught.
 
 Setting **Show the photo**: on by default. Off, no photo is downloaded and the fence is shorter.
 
-Settings **Spoonacular key**, **Recipe API key** and **Tasty (RapidAPI) key**: optional. Make a free
-account on the service, copy the key and type it here; PecoFence keeps it encrypted on this
+Settings **TheMealDB key**, **Spoonacular key**, **Recipe API key** and **Tasty (RapidAPI) key**:
+optional. Make an account on the service (TheMealDB's key is a supporter's, a paid one; the others have
+a free plan), copy the key and type it here; PecoFence keeps it encrypted on this
 computer. Without a key that source is never asked.
 
 ## When the plugin contacts a site, and what for
@@ -70,7 +71,7 @@ or cookie either; like every web request they show the service your network addr
 
 | Source | Asked for | Host |
 |---|---|---|
-| TheMealDB | one random meal; its photo | `www.themealdb.com` |
+| TheMealDB | one random meal, with your key in the address (as TheMealDB has it); its photo | `www.themealdb.com` |
 | DummyJSON | `https://dummyjson.com/recipes/<number>` for a number the plugin draws; the photo | `dummyjson.com`; `cdn.dummyjson.com` |
 | Wikibooks Cookbook | one random page of the Cookbook with its text (up to three tries for one that is a recipe); the page's photo | `en.wikibooks.org`; `thumb.wikimedia.org` |
 | Forkify | a search for a food word the plugin draws (pizza, soup...), then one recipe of it; its photo | `forkify-api.jonas.io`; `forkify-api.herokuapp.com` |
@@ -95,14 +96,18 @@ plugin may declare 20 sites to open at most, so these are the 18 most frequent i
 
 Recipes and photos belong to their services and authors. What the plugin does for each:
 
-- **TheMealDB**: the source line names it and links to it, the title links to the meal's page; only
-  the official API is used (never the site's pages), with the `/medium` photo size.
+- **TheMealDB**: used only with your own key, as its terms do not let an app published in an app
+  store use the free test key; the source line names it and links to it, the title links to the
+  meal's page; only the official API is used (never the site's pages), with the `/medium` photo size.
 - **DummyJSON**: its pages state no terms or limit; its data is sample data "for testing and
   prototyping".
 - **Wikibooks Cookbook**: the text is shared under CC BY-SA (shown on the idea, with a link to the
   page and so to its authors); a photo has its own licence on Wikimedia Commons, and a click on it
   opens the page where it is credited. Requests go one at a time, with `maxlag`, and `Retry-After`
-  and a "too many requests" answer put the source to rest, as Wikimedia asks.
+  and a "too many requests" answer put the source to rest, as Wikimedia asks. Wikimedia also asks for
+  a User-Agent with contact information, which the plugin host sets and a plugin cannot change: the
+  plugin adds the header `Api-User-Agent` (`PecoFence-Recipes/1.0` and the plugin's project page,
+  `github.com/DayuanJiang/PecoFence-plugins`, as text) to its requests to Wikibooks and Wikimedia.
 - **Forkify**: a course API that allows 100 requests an hour (an answer to wait puts it to rest);
   its recipes belong to the sites they come from, which the idea names and the title links to.
 - **Spoonacular**: its free plan asks for a link back and the original source's name: the idea says

@@ -44,7 +44,7 @@
       "default": "auto",
       "options": [
         { "value": "auto", "label": { "en": "Automatic (next one when a source has nothing new)", "zh-CN": "自动（来源没有新内容时换下一个）", "ja": "自動（新しいものがなければ次へ）", "de": "Automatisch (nächste Quelle, wenn eine nichts Neues hat)", "fr": "Automatique (la suivante quand une source n'a rien de neuf)", "es": "Automática (la siguiente si una no tiene nada nuevo)", "pt-BR": "Automática (a próxima quando uma não tem novidade)", "it": "Automatica (la successiva se una non ha novità)" } },
-        { "value": "mealdb", "label": { "en": "TheMealDB" } },
+        { "value": "mealdb", "label": { "en": "TheMealDB (needs your own supporter key)", "zh-CN": "TheMealDB（需要你自己的支持者密钥）", "ja": "TheMealDB（自分のサポーターキーが必要）", "de": "TheMealDB (braucht Ihren eigenen Unterstützer-Schlüssel)", "fr": "TheMealDB (nécessite votre propre clé de supporter)", "es": "TheMealDB (necesita su propia clave de supporter)", "pt-BR": "TheMealDB (precisa da sua própria chave de apoiador)", "it": "TheMealDB (serve la tua chiave da supporter)" } },
         { "value": "dummyjson", "label": { "en": "DummyJSON" } },
         { "value": "wikibooks", "label": { "en": "Wikibooks Cookbook" } },
         { "value": "forkify", "label": { "en": "Forkify" } },
@@ -81,6 +81,20 @@
         "it": "Ingredienti da evitare (inglese, virgole; senza garanzia)"
       },
       "default": ""
+    },
+    {
+      "key": "mealdbKey",
+      "type": "secret",
+      "label": {
+        "en": "TheMealDB key (optional, supporter)",
+        "zh-CN": "TheMealDB 密钥（可选，支持者）",
+        "ja": "TheMealDB のキー（任意、サポーター）",
+        "de": "TheMealDB-Schlüssel (optional, Unterstützer)",
+        "fr": "Clé TheMealDB (facultative, supporter)",
+        "es": "Clave de TheMealDB (opcional, supporter)",
+        "pt-BR": "Chave do TheMealDB (opcional, apoiador)",
+        "it": "Chiave TheMealDB (facoltativa, supporter)"
+      }
     },
     {
       "key": "spoonacularKey",

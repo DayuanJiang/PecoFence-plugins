@@ -85,7 +85,7 @@ const TEXTS = {
 let t = TEXTS[pf.lang] || TEXTS.en;
 const fill = (text, ...values) => text.replace(/\{(\d)\}/g, (_, i) => String(values[i]));
 
-const SOURCES = ["mealdb", "dummyjson", "wikibooks", "forkify", "spoonacular", "recipeapi", "tasty"];
+const SOURCES = ["dummyjson", "wikibooks", "forkify", "mealdb", "spoonacular", "recipeapi", "tasty"];
 const NAMES = {
   mealdb: "TheMealDB", dummyjson: "DummyJSON", wikibooks: "Wikibooks Cookbook", forkify: "Forkify",
   spoonacular: "Spoonacular", recipeapi: "Recipe API", tasty: "Tasty",
@@ -106,7 +106,7 @@ const SOURCE_TIPS = {
   "zh-CN": "打开来源网站", ja: "出典のサイトを開く",
 };
 // The sources that need the user's own key, and the setting that holds it.
-const KEYS = { spoonacular: "spoonacularKey", recipeapi: "recipeApiKey", tasty: "tastyKey" };
+const KEYS = { mealdb: "mealdbKey", spoonacular: "spoonacularKey", recipeapi: "recipeApiKey", tasty: "tastyKey" };
 // The sites Forkify's recipes come from, the 18 most frequent (about 94 % of its recipes): hosts of
 // "links" in plugin.json, which holds 20 at most. Forkify has no steps, only the page of the site a
 // recipe comes from, so a recipe from another site is not taken.
@@ -121,13 +121,19 @@ const FORKIFY_TERMS = [
   "pizza", "pasta", "salad", "chicken", "soup", "cake", "bread", "curry", "beef", "pork", "fish", "rice",
   "potato", "cheese", "chocolate", "egg", "vegetable", "shrimp", "cookie", "pie",
 ];
-// TheMealDB's public test key for development and learning, as its documentation gives it: it is
-// the same for everyone and opens nothing private.
-const MEALDB = "https://www.themealdb.com/api/json/v1/1/random.php";
+// TheMealDB's address for a random meal, with the user's own key in the path. Its free test key is
+// for development and learning only (its terms: "You cannot publish apps to an appstore unless you
+// are a paid subscriber"), so the plugin never uses it: the key is the user's (a supporter's).
+const mealdbUrl = (key) => `https://www.themealdb.com/api/json/v1/${encodeURIComponent(key)}/random.php`;
 // A random page of the Cookbook (namespace 102) with its text and its picture, if it has one.
 const WIKIBOOKS = "https://en.wikibooks.org/w/api.php?action=query&generator=random&grnnamespace=102&grnlimit=1"
   + "&prop=extracts|pageimages&explaintext=1&exsectionformat=wiki&piprop=thumbnail&pithumbsize=480"
   + "&format=json&formatversion=2&maxlag=5";
+// Wikimedia asks every client for a User-Agent with contact information; the plugin host's cannot
+// be changed by a plugin, so the plugin gives its own in "Api-User-Agent", the header Wikimedia's
+// policy names for clients that cannot set the User-Agent. The contact is the plugin's project page,
+// written as text for Wikimedia's administrators (never an address the plugin asks for anything).
+const WIKIMEDIA_AGENT = { "api-user-agent": "PecoFence-Recipes/1.0 (github.com/DayuanJiang/PecoFence-plugins)" };
 const FORKIFY = "https://forkify-api.jonas.io/api/v2/recipes";
 const RECIPEAPI = "https://recipe-api.com/api/v1/recipes";
 const TASTY = "https://tasty.p.rapidapi.com/recipes/list";
@@ -160,7 +166,7 @@ function fail(kind, wait, recipe) {
 }
 
 // An answer's JSON; a refused or failed request throws what the caller does about it.
-async function get(url, headers) {
+async function get(url, headers, keyed) {
   let answer;
   try {
     answer = await pf.http.get(url, headers ? { headers } : undefined);
@@ -176,8 +182,8 @@ async function get(url, headers) {
     }
   }
   if (answer.status === 404) return null;
-  // 401, or 403 from a service that was sent a key: the key is not accepted.
-  if (answer.status === 401 || (answer.status === 403 && headers)) throw fail("badkey", HOUR);
+  // 401, or 403 from a service that was sent the user's key: the key is not accepted.
+  if (answer.status === 401 || (answer.status === 403 && keyed)) throw fail("badkey", HOUR);
   // 402: the free quota of the day is used up; it comes back at midnight UTC.
   if (answer.status === 402) throw fail("quota", Math.max(after, DAY - (pf.time.now() % DAY) + MINUTE));
   if (answer.status === 429) throw fail("limit", Math.max(after, 30 * MINUTE));
@@ -223,10 +229,12 @@ function fromMealdbMeal(m) {
 }
 
 async function fromMealdb(repeatOk) {
+  const key = keyOf("mealdb");
+  if (!key) throw fail("nokey", 0);
   const seen = new Set(st.seen.mealdb || []);
   let again = null;
   for (let i = 0; i < 3; i++) {
-    const data = await get(MEALDB);
+    const data = await get(mealdbUrl(key), null, true);
     const meal = data && data.meals && data.meals[0];
     if (!meal || !meal.idMeal || !meal.strMeal) throw fail("error", 30 * MINUTE);
     if (!seen.has(String(meal.idMeal))) return fromMealdbMeal(meal);
@@ -300,7 +308,7 @@ async function fromWikibooks(repeatOk) {
   let again = null;
   // Many pages of the Cookbook are not recipes (indexes, tips): a few tries for one that is.
   for (let i = 0; i < 3; i++) {
-    const data = await get(WIKIBOOKS);
+    const data = await get(WIKIBOOKS, WIKIMEDIA_AGENT);
     const page = data && data.query && data.query.pages && data.query.pages[0];
     if (!page || !page.pageid || !page.title) continue;
     const found = wikiRecipe(page.extract);
@@ -365,8 +373,8 @@ async function fromForkify(repeatOk) {
 
 async function fromSpoonacular() {
   const key = keyOf("spoonacular");
-  if (!key) throw fail("nokey", HOUR);
-  const data = await get("https://api.spoonacular.com/recipes/random?number=1", { "x-api-key": key });
+  if (!key) throw fail("nokey", 0);
+  const data = await get("https://api.spoonacular.com/recipes/random?number=1", { "x-api-key": key }, true);
   const r = data && data.recipes && data.recipes[0];
   if (!r || !r.title) throw fail("error", 30 * MINUTE);
   let steps = (r.analyzedInstructions || []).flatMap((a) => (a.steps || []).map((s) => s.step));
@@ -387,7 +395,7 @@ async function fromSpoonacular() {
 // (one credit of the free plan). Its search finds at most 500 recipes. It has no pictures.
 async function fromRecipeapi(repeatOk) {
   const key = keyOf("recipeapi");
-  if (!key) throw fail("nokey", HOUR);
+  if (!key) throw fail("nokey", 0);
   const auth = { "x-api-key": key };
   const seen = new Set(st.seen.recipeapi || []);
   let chosen = null;
@@ -395,7 +403,7 @@ async function fromRecipeapi(repeatOk) {
   for (let i = 0; i < 4 && !chosen; i++) {
     const total = st.counts.recipeapi || 0;
     const page = total ? 1 + Math.floor(Math.random() * total) : 1;
-    const data = await get(`${RECIPEAPI}?per_page=1&page=${page}`, auth);
+    const data = await get(`${RECIPEAPI}?per_page=1&page=${page}`, auth, true);
     if (data && data.meta && Number(data.meta.total) > 0) st.counts.recipeapi = Math.min(Number(data.meta.total), 500);
     const item = data && data.data && data.data[0];
     if (!item || !item.id) continue;
@@ -404,7 +412,7 @@ async function fromRecipeapi(repeatOk) {
   }
   chosen = chosen || (repeatOk ? again : null);
   if (!chosen) throw fail(again ? "empty" : "error", again ? 12 * HOUR : 30 * MINUTE);
-  const found = await get(`${RECIPEAPI}/${encodeURIComponent(chosen.id)}`, auth);
+  const found = await get(`${RECIPEAPI}/${encodeURIComponent(chosen.id)}`, auth, true);
   const r = found && found.data;
   if (!r || !r.name) throw fail("error", 30 * MINUTE);
   const groups = (r.ingredients || []).filter((g) => g && g.items);
@@ -426,13 +434,13 @@ async function fromRecipeapi(repeatOk) {
 // are. Some entries are compilations with no steps, passed over.
 async function fromTasty(repeatOk) {
   const key = keyOf("tasty");
-  if (!key) throw fail("nokey", HOUR);
+  if (!key) throw fail("nokey", 0);
   const auth = { "x-rapidapi-key": key, "x-rapidapi-host": "tasty.p.rapidapi.com" };
   const seen = new Set(st.seen.tasty || []);
   let again = null;
   for (let i = 0; i < 4; i++) {
     const total = st.counts.tasty || 2000;
-    const data = await get(`${TASTY}?from=${Math.floor(Math.random() * total)}&size=1`, auth);
+    const data = await get(`${TASTY}?from=${Math.floor(Math.random() * total)}&size=1`, auth, true);
     if (!data) continue;
     if (Number(data.count) > 0) st.counts.tasty = Number(data.count);
     const r = data.results && data.results[0];
@@ -546,7 +554,8 @@ async function savePhoto(idea) {
   const ext = (/\.(png|gif|webp|jpe?g)(?:$|[?\/])/i.exec(url) || [])[1];
   const name = `${pf.fence.id}-ph-${hashOf(idea.src + ":" + idea.id)}.${ext ? ext.toLowerCase() : "jpg"}`;
   try {
-    const answer = await pf.http.save(url, name);
+    const wikimedia = idea.src === "wikibooks" ? { headers: WIKIMEDIA_AGENT } : undefined;
+    const answer = await pf.http.save(url, name, wikimedia);
     return answer.status === 200 ? name : "";
   } catch (e) {
     return "";
@@ -723,6 +732,8 @@ pf.on("lang", () => {
 });
 pf.on("settings", () => {
   problem = "";
+  // A key typed or corrected is tried at once: the rest a refused key put its source to is over.
+  for (const source of Object.keys(KEYS)) delete st.cool[source];
   if (st.sourceSet !== pf.settings.source) st.forced = "";
   st.sourceSet = pf.settings.source;
   // An idea shown with an ingredient to avoid, typed now, gives way to a new one.
