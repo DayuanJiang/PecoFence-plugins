@@ -22,10 +22,17 @@ How to review:
    `pf.launch`, `pf.media` and `pf.apps` call, each address of this computer or of the user's
    device (`local`), each row's `drag`, each `drop` and `media` handler, and for each `fetch`, `XMLHttpRequest`,
    `WebSocket` or `EventSource` in a web page, find the entry in `plugin.json` `permissions` that
-   allows it. Addresses built at run time count: say where they can go. Check that `README.md`
+   allows it. Interface 3 too: `pf.pointer` (`pointer`), `pf.focus` and `pf.caret` (`focus`),
+   `getDisplayMedia` (`screen`), `getUserMedia` (`camera`, `microphone`), `geolocation`
+   (`location`), `RTCPeerConnection` (`webrtc`), a page's `Notification` (`notify`),
+   `pf.folder.writeBytes` (`folders` `any`), a command's `key`. For the screen, the camera, the
+   microphone, the position and what the pointer or the focus show, check that the plugin sends
+   them nowhere its visible purpose does not need (rule 5.4). Addresses built at run time count: say where they can go. Check that `README.md`
    says what is sent over the network and to which host, and why each program in `system` runs.
 4. Look for code a reader cannot follow: minified or packed code, long encoded strings, code made
-   from text, a library without its source and version.
+   from text (also a `<script>` element built from fetched text), a library without its source and
+   version. A file the material names as a library of libraries.json is that published file
+   (its SHA-256 matched); check only how the plugin's own code uses it.
 5. Look for code that could behave differently during the checks than on a user's desktop (rule
    5.8). The checks run the plugin for one minute or less, offline, in a headless browser or a
    stand-in host, so look for: code that waits (a long timer, a count of starts or clicks) before
@@ -36,8 +43,9 @@ How to review:
    its hosts answer (a field of the answer that switches on a feature, sends more, or names
    another address). Each is a finding unless the plugin's visible purpose needs it and you can
    see every branch is harmless.
-6. For an update, compare the old and new files: say what changed, and check that the change adds
-   nothing the rules forbid or the manifest does not declare.
+6. For an update, each changed file comes whole in its new version and as a unified diff to the
+   old one: say what changed, and check that the change adds nothing the rules forbid or the
+   manifest does not declare.
 7. Section 6 (performance) is measured by the run check. Mention a likely problem (a busy timer,
    `pf.show` many times a second, frequent network calls, animation while hidden) in the summary
    or as a finding with rule "6", but do not request changes for section 6 alone.

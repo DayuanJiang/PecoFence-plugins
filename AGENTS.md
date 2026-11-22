@@ -26,13 +26,15 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
 - Every folder may also have `screenshot.png` (one picture of the fence, at most 300 KB).
 - `<id>`: lower-case letters, digits and `-`, 3 to 40 characters, never changed after it is merged.
-- Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 200 KB, any other file at
-  most 1 MB, the whole folder at most 5 MB and 100 files.
-- The automatic review (section 9) reads at most 200 KB of text: the `.json`, `.js`, `.html`,
-  `.css`, `.svg` and `.md` files of the new version and, for an update, of the version before,
-  together (pictures and fonts do not count). A pull request over that is not reviewed and not
-  merged. Keep the text small: no copied libraries, no long tables of data or generated code.
-  An update counts both versions, so keep a plugin you mean to update under about 100 KB of text.
+- Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 1 MB, any other file at
+  most 5 MB, the whole folder at most 20 MB and 500 files. A plugin past the sizes of interface 2
+  (`main.js` 200 KB, another file 1 MB, 5 MB and 100 files in all) needs `api: 3` (section 2).
+- The automatic review (section 9) reads at most 1 MB of text: the `.json`, `.js`, `.html`,
+  `.css`, `.svg` and `.md` files of the new version and, for an update, the diff of each changed
+  file to the version before (pictures and fonts do not count). A pull request over that is not
+  reviewed and not merged. A library file listed in `libraries.json` byte for byte (section 9)
+  counts nothing: the review names it and does not read it. No long tables of data or generated
+  code.
 - File and folder names: small letters, digits, `.`, `_` and `-` (only `README.md` has
   capitals), at most 64 characters, not starting or ending with a dot, and not a name Windows
   keeps for a device (`con`, `prn`, `aux`, `nul`, `com1` to `com9`, `lpt1` to `lpt9`, also with
@@ -66,7 +68,13 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   plugin. `api` is the plugin interface version: `2` for a plugin that uses any of `commands`,
   `drop`, `launch`, `media`, `apps` or `local`, `folders` `"readwrite"`, or a `secret` or
   `device` setting (with `minPecoFence` `0.5.0` or later), else `1`. A PecoFence that knows only
-  interface 1 shows such a plugin as 需要更新 PecoFence. The view parts new in 0.5.0 (a row's
+  interface 1 shows such a plugin as 需要更新 PecoFence. `3` (with `minPecoFence` `0.6.0` or
+  later) for a plugin that uses any of `screen`, `pointer`, `focus`, `camera`, `microphone`,
+  `location`, `webrtc`, `folders` `"any"`, a command's `key`, a host that is an IP address or a
+  name without a dot, a `.cmd`, `.bat` or `.ps1` in `system`, more than 20 programs or 4 local
+  ports, files past the sizes of interface 2, or, in a web page, an inline script or style, an
+  `on...=` or `style=` attribute or a `data:` or `blob:` address. PecoFence 0.5.0 shows it as 需要更新
+  PecoFence and still gets its take-down. The view parts new in 0.5.0 (a row's
   `menu`, `hover`, `wheel`, `drag`, the `text` input) need no `api: 2`, only `minPecoFence`
   `0.5.0`.
 - `name` (at most 60 characters) and `description` (at most 300) need `en`; add the languages you
@@ -77,19 +85,24 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
   | Field | Meaning |
   |---|---|
-  | `network` | host names `pf.http` may reach, and a web page may connect to (`"api.github.com"`). No IP addresses, no `localhost`, no names without a dot |
+  | `network` | host names `pf.http` may reach, and a web page may connect to (`"api.github.com"`). Interface 3 also an IPv4 address, an IPv6 address in brackets (`"[fd00::20]"`) and a name without a dot (`"nas"`, `"localhost"`): a request to an address of this computer or of the local network goes by the rules of `local` (never through a proxy, plain `http` too, only through `pf.http`; a page's own `fetch` cannot reach it), a public address as any host. The ports of `local`'s list below are refused for every request |
   | `links` | more host names `pf.open` may open in the browser (hosts in `network` may be opened too) |
   | `clipboard` | `none`, `write` (only puts things on the clipboard, such as a copied IP address), `read`, or `readwrite` |
   | `background` | `true` keeps the plugin running while its fence is hidden (a clipboard history needs it) |
-  | `system` | programs `pf.run` may start, at most 20, each ending in `.exe`: a full path (`C:\Tools\tool.exe`, no empty part and no `..`), or the name of a program in `C:\Windows\System32` (`ipconfig.exe`). Works only when the user turns on 允许插件使用 Windows 底层功能, and every update asks the user again |
-  | `folders` | `"read"` (or `true`): the plugin may ask the user to pick a folder and read it. `"readwrite"`: it may also write data files there, make folders and move things to the Recycle Bin (`pf.folder.write`, `mkdir`, `trash`); the warning says "Reads and writes a folder you pick (you pick it after installing)". An update from `read` to `readwrite` drops the folders picked before: the user picks them again |
+  | `system` | programs `pf.run` may start, each ending in `.exe` (interface 3 also `.bat`, `.cmd` and `.ps1`, and more than 20): a full path (`C:\Tools\tool.exe`, no empty part and no `..`), or the name of a program in `C:\Windows\System32` (`ipconfig.exe`). Works only when the user turns on 允许插件使用 Windows 底层功能, and every update asks the user again. `pf.run` refuses a program that came from the internet (the Mark of the Web) and one inside a folder the user picked or the plugin's data folder: a plugin cannot write a program and run it |
+  | `folders` | `"read"` (or `true`): the plugin may ask the user to pick a folder and read it. `"readwrite"`: it may also write data files there, make folders and move things to the Recycle Bin (`pf.folder.write`, `mkdir`, `trash`); the warning says "Reads and writes a folder you pick (you pick it after installing)". An update from `read` to `readwrite` drops the folders picked before: the user picks them again. `"any"` (interface 3): files of any type too, and `pf.folder.writeBytes`; a written file that is not one of the ten data types gets the Mark of the Web; the warning says "Reads and writes a folder you pick, files of any type"; an update from `readwrite` to `any` asks again |
   | `notify` | the plugin may show a notice card and play a sound |
-  | `commands` | at most 8 `{ "id": "show", "title": { "en": "Show the launcher" } }`: actions the user can give a shortcut in the plugin's details (event `command`). `id` 1 to 32 letters, digits and `-`, each once (`Show` and `show` are two); `title` needs `en`, at most 40 characters. A plugin cannot bring its own key. The warning says "Has these commands: …. You can give them shortcuts in the plugin's details" |
+  | `commands` | at most 8 `{ "id": "show", "title": { "en": "Show the launcher" } }`: actions the user can give a shortcut in the plugin's details (event `command`). `id` 1 to 32 letters, digits and `-`, each once (`Show` and `show` are two); `title` needs `en`, at most 40 characters. The warning says "Has these commands: …. You can give them shortcuts in the plugin's details". Interface 3: a command may bring a shortcut, `"key": "Ctrl+Shift+M"`: modifiers and a key joined by `+`, with Ctrl, Alt or Win and with Shift or Win (Ctrl+Alt is AltGr on German, French, Polish and other keyboards), not Win and one key alone, not a common Windows shortcut. PecoFence sets it on install for the fence the install makes unless another program or PecoFence has it (the details then say 「这个快捷键已被占用」), the user may change or clear it and an update keeps what the user chose; an update that adds or changes a `key` asks first. The warning says "Brings its own shortcut Ctrl+Shift+M: <title>" |
   | `drop` | any of `files`, `text` and `links` (`http` and `https` addresses): what may be dropped on the fence (event `drop`, also in a web page). The warning says "It can read the files and text you drag onto it" |
   | `launch` | `true`: the fence keeps the files, folders and programs the user puts into it and opens them (`pf.launch`). The warning says "Open the files, folders and programs you put into this fence" |
   | `media` | `read`: sees what Windows' media session plays now (`pf.media.current`, event `media`); `control`: may also pause it and skip (`pf.media.control`). The warning says "Sees the song or video playing now: its title, artist, album and cover", with `control` ", and can pause it and skip" |
   | `apps` | at most 20 program names ending in `.exe`, without a path (`spotify.exe`): `pf.apps.running` and `pf.apps.front` tell which of them run and which is in front (event `apps`). The warning says "Knows whether these programs run and whether they are in front: spotify.exe" |
-  | `local` | `{ "loopback": [{ "port": 11434, "app": "Ollama" }], "lan": [{ "port": 8123, "app": "Home Assistant" }] }`: ports `pf.http` may reach off the internet, each once with the name of the program that answers there (1 to 40 characters), at most 4 in all. `loopback`: this computer. `lan`: the device whose address the user types in the plugin's `device` setting (a plugin has both or neither). Never a port of a debugger or of remote administration: 22, 23, 135, 139, 445, 2375, 2376, 3389, 4444, 5037, 5555, 5900, 5985, 5986, 6443, 9222, 9229, 9515, 10250. The warnings say "Connects to Ollama on this computer (port 11434)" and "Connects to the local network device you enter in its settings (port 8123)" |
+  | `local` | `{ "loopback": [{ "port": 11434, "app": "Ollama" }], "lan": [{ "port": 8123, "app": "Home Assistant" }] }`: ports `pf.http` may reach off the internet, each once with the name of the program that answers there (1 to 40 characters); more than 4 in all need interface 3. `loopback`: this computer. `lan`: the device whose address the user types in the plugin's `device` setting (a plugin has both or neither). Never a port of a debugger or of remote administration: 22, 23, 135, 139, 445, 2375, 2376, 3389, 4444, 5037, 5555, 5900, 5985, 5986, 6443, 9222, 9229, 9515, 10250. The warnings say "Connects to Ollama on this computer (port 11434)" and "Connects to the local network device you enter in its settings (port 8123)" |
+  | `screen` | interface 3, a web page: `navigator.mediaDevices.getDisplayMedia()` shows WebView2's picker each time and the user picks a screen or a window to share; without `screen` it rejects (`NotAllowedError`). The warning says "Can see your screen: each time it starts, you choose which screen or window to share" |
+  | `pointer` | interface 3: `pf.pointer()` and the `pointer` event tell where the pointer is on the screen. The warning says "Knows where the pointer is on the screen" |
+  | `focus` | interface 3: `pf.focus()`, `pf.caret()` and the `focus` event tell where the keyboard focus and the text caret are (as rectangles; nothing of what is typed). The warning says "Knows where the keyboard focus and the text cursor are" |
+  | `camera`, `microphone`, `location` | interface 3, a web page: `getUserMedia` (video for `camera`, audio for `microphone`) and `navigator.geolocation` are allowed; without them they are refused. The warnings say "Can use the camera", "Can use the microphone", "Can know where this computer is" |
+  | `webrtc` | interface 3, a web page: `RTCPeerConnection` and its data channels work. A connection goes to whichever computer the other side names, so it is not held to `network`. The warning says "Can connect directly to other computers (video calls, file transfers), to any computer" |
 
 - `settings`: what the fence menu's 插件设置 offers, at most 20. Each has a `key` (letters and
   digits), a `type` (`text`, `number`, `switch`, or `choice` with 1 to 50 `options`:
@@ -108,8 +121,10 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   (a new host, reading or writing the clipboard where it did not before, another `layer`,
   `background`, `notify` or `launch` turned on, a new program in `system` or `apps`, a new
   command `id`, a new kind of `drop`, `media` from none to `read` or from `read` to `control`,
-  `folders` from none to `read` or from `read` to `readwrite`, a port of `local` not there before:
-  `loopback` and `lan` apart, so a port moved from one to the other is new)
+  `folders` from none to `read`, from `read` to `readwrite` or from `readwrite` to `any`, a port of
+  `local` not there before: `loopback` and `lan` apart, so a port moved from one to the other is
+  new; interface 3: `screen`, `pointer`, `focus`, `camera`, `microphone`, `location` or `webrtc`
+  turned on, a command's `key` added or changed)
   waits until the user agrees. So does an update whose `author` differs from the installed one;
   its warning names both.
 - In the first minute after an update, PecoFence goes back to the version before when the new
@@ -183,7 +198,8 @@ thread:
 | `pf.folder.pick()` | `folders` | the path of the folder the user picked (PecoFence remembers it for this fence), or `null` when they cancelled |
 | `pf.folder.list(path)` | `folders`; `path` inside a picked folder | `{ items: [{ name, path, folder, size, modified }], cut }`: at most 2,000 entries, `cut` is `true` when the folder has more; `folder` is `true` for a folder, `modified` is in ms since 1970 |
 | `pf.folder.read(path)` | the same | the file's text (UTF-8); in `main.js` at most what fits the 2 MB answer limit, in a web page at most 20 MB |
-| `pf.folder.write(path, text)` | `folders` `"readwrite"`; `path` a data file inside a picked folder (*Writing in folders* below) | `null`: the file holds `text` (UTF-8; a value that is not text is written as its JSON), at most 20 MB |
+| `pf.folder.write(path, text)` | `folders` `"readwrite"`; `path` a data file inside a picked folder (*Writing in folders* below; with `"any"` a file of any type) | `null`: the file holds `text` (UTF-8; a value that is not text is written as its JSON), at most 20 MB |
+| `pf.folder.writeBytes(path, base64)` | `folders` `"any"`; `path` as for `write` | `null`: the file holds the bytes (standard base64, at most the 1 MB of a message) |
 | `pf.folder.mkdir(path)` | the same; `path` a new folder inside a picked folder, in a folder that is there | `null`, also when the folder was there |
 | `pf.folder.trash(path)` | the same; `path` a data file or an empty folder below a picked folder (not the picked folder itself) | `true`: it is in the Recycle Bin. A link or junction, a path that is not there, and something that cannot go to the Recycle Bin reject; the last says `it cannot go to the Recycle Bin (a network folder, a USB stick, too large for the bin, or the bin is off for that drive); nothing was deleted`. Nothing is ever deleted for good |
 | `pf.notify(title, body, { sound })` | `notify` | `null`: PecoFence's corner card shows the plugin's name, `title` and `body`; `sound: true` also plays Windows' information sound |
@@ -198,6 +214,9 @@ thread:
 | `pf.apps.front()` | `apps` | the program of `apps` whose window is in front, as written there, or `null` |
 | `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the fence's last drop with files (a drop of only text or a link keeps it; it is gone 5 minutes after the drop); at most 1 MB, a larger file rejects (use `pf.drop.save`), so does a file with a NUL or not in UTF-8 (`not a text file; use pf.drop.read`) |
 | `pf.drop.read(i)` | the same | the bytes of that file in standard base64; at most 1 MB |
+| `pf.pointer()` | `pointer` | `{ x, y, monitor }`: the pointer in screen pixels, and the rectangle `{ left, top, right, bottom }` of the monitor it is on |
+| `pf.focus()` | `focus` | `{ x, y, width, height }` of the element that has the keyboard focus, in screen pixels, or `null` |
+| `pf.caret()` | `focus` | the text caret's rectangle `{ x, y, width, height }`, or `null` when there is none |
 | `pf.drop.save(i, name)` | the same; `name` a data name | `null`: PecoFence copies the file into the data files as `name` (at most 20 MB), never through the plugin's memory |
 
 A data name is letters, digits, `.`, `_` and `-`, at most 64 characters, not starting or ending
@@ -222,12 +241,13 @@ one fence keeps that way; other files stay until the plugin is uninstalled.
 an `Error` at once that says what it needs, such as `http.get needs an https address with
 example.com in permissions.network`, `clipboard.text needs permissions.clipboard read` or
 `pf.open works only in a click, dblclick, command or submit handler`. So does a call past the
-calls a plugin may have under way: `http.get: too many calls at once (at most 4 requests and 16
+calls a plugin may have under way: `http.get: too many calls at once (at most 8 requests and 32
 calls)`. Put calls that can be refused in `try` (an error that escapes ends the handler there,
 section 3.2), and queue many calls (removing 30 files) instead of making them all at once.
 
 **Failed calls reject.** A call PecoFence tried and could not do rejects its Promise with an
-`Error` whose message says why: no answer from the network, an answer larger than 1 MB, more than
+`Error` whose message says why: no answer from the network, an answer larger than 10 MB (in
+`main.js` the 2 MB below), more than
 5 redirects, a redirect to a host not in `network` (`redirect refused: ...`), `the clipboard is
 busy`, the data folder past 200 MB, a picture larger than 4096 × 4096 pixels, `pf.run needs
 允许插件使用 Windows 底层功能 ...` while the switch is off, a program that ran longer than 30
@@ -314,6 +334,8 @@ plugin stops for the third time within an hour.
 | `command` | the user chose one of the plugin's menu entries (section 3.3), or pressed the shortcut of one of its `commands`. A shortcut first brings this fence up alone over all windows, as 速览 (Peek) does; pressed again, the fence goes back | `{ id, via, row }`: `via` is `"menu"` or `"key"`; `row` is the `id` of the row whose own `menu` it came from |
 | `drop` | files, a text or a link were dropped on the fence (only the kinds in `drop`): at most 20 files at once, no folders (except for a plugin with `launch`), nothing dragged from PecoFence's own fences | `{ files: [{ name, size, folder }], text, url, row }`: names and sizes in bytes only, never paths; `text` (at most 262,144 UTF-16 units, as JavaScript counts `length`) and `url`, or `null`; `row`: the `id` of the row under the drop point, `null` on a blank part (a web page: `x` and `y`, the point in the page's CSS pixels, for `document.elementFromPoint`) |
 | `media` | what plays changed (with `media`): at most once a second, once a second while it plays; not while the fence is hidden (unless `background`) | none: call `pf.media.current()` |
+| `pointer` | the pointer moved (with `pointer`): at most 30 a second, the moves in between left out; only while the fence shows | `{ x, y, monitor }` as `pf.pointer()` |
+| `focus` | the keyboard focus or the text caret moved (with `focus`); only while the fence shows | `{ focus, caret }` as `pf.focus()` and `pf.caret()` |
 | `dragend` | a drag out of a row with `drag` (section 3.3) ended (a click that does not move sends none) | `{ row, dropped }`: the row's `id`, and whether a target took it |
 
 An error that escapes a handler or a timer ends that run, and the rest of that run is lost.
@@ -443,11 +465,14 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   Content Security Policy on every answer:
   `default-src 'self'; connect-src 'self' https://<host> wss://<host> ...; frame-src 'none'; form-action 'none'`
   with each host of `network`. So scripts, styles, pictures and fonts come only from the plugin's
-  own files: **no inline script or style** (no `<script>` with code in it, no `<style>` element,
-  no `style="..."` or `onclick="..."` attribute; put them in `.js` and `.css` files and set styles
-  from a script through `element.style`), no `data:` or `blob:` addresses for pictures, fonts or
-  scripts, no frames, no forms. A CSP the plugin writes itself does not count. The web check
-  (section 8) serves the page with this header and fails what it blocks.
+  own files: no inline script or style (no `<script>` with code in it, no `<style>` element, no
+  `style="..."` or `onclick="..."` attribute), no `data:` or `blob:` addresses, no frames, no forms.
+  With `api: 3` the policy also lets through inline styles (`style-src 'self' 'unsafe-inline'`),
+  `data:` and `blob:` pictures, fonts and media, and each inline `<script>` and `on...=` attribute
+  of the plugin's own HTML files by its SHA-256 (`script-src 'self' 'unsafe-hashes' 'sha256-...'`,
+  worked out when PecoFence serves the file): what the file holds runs, a script a page builds
+  later from text does not. A CSP the plugin writes itself does not count. The web check (section 8)
+  serves the page with this header and fails what it blocks.
 - Each file comes with the type of its extension and `X-Content-Type-Options: nosniff`, so a
   script runs only from a `.js` file. A path is taken as written: nothing in it is decoded, so a
   name with `%` finds no file.
@@ -458,7 +483,7 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   and rules of section 3.1, except: every call returns a Promise (`pf.time.now()` too); `pf.on`
   returns nothing; `pf.show`, `pf.every`, `pf.after` and `pf.cancel` are not there (use the
   browser's `setInterval` and `setTimeout`, and stop them on `hide`); `pf.post` is added (below).
-  A call refused there, also one past the 4 requests and 16 calls a plugin may have under way,
+  A call refused there, also one past the 8 requests and 32 calls a plugin may have under way,
   rejects its Promise; so does a call whose arguments are over 1 MB (a `RangeError`). `pf.open`
   works within 1 second after a mouse press in the fence, as do `pf.launch.open`,
   `pf.launch.pick` and `pf.media.control`: each press lets one such call through. The page has
@@ -476,8 +501,11 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
 - When the page reloads itself (`location.reload()`), PecoFence makes the page anew: the new one
   gets the current settings, theme and fence size, and the calls of the old one no longer count.
 - The page's background is transparent; the fence's glass shows through. Follow `pf.theme`.
-- Refused for every page: permission requests (camera, location, notifications, clipboard), other
-  sites, new windows, downloads, other protocols, and WebRTC.
+- Refused for every page: other sites, new windows, downloads, other protocols and the browser's
+  clipboard; the screen, the camera, the microphone, the position and WebRTC unless the manifest
+  declares `screen`, `camera`, `microphone`, `location` or `webrtc` (interface 3); a page's
+  `Notification` unless it declares `notify` (PecoFence shows it as its corner card). PecoFence
+  decides each time from the manifest: nothing a page was allowed or refused is remembered.
 - While the fence is hidden the page is slowed and, after 30 seconds, paused (unless
   `background`). Stop animations on `hide`.
 - An optional `main.js` runs in the light layer next to the page, with section 3's `pf`. The
@@ -499,21 +527,25 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
    obfuscated, encoded or packed code (no line longer than 1000 characters, no long base64 or
    `\x` strings that hold code). No code made from text at run time: no `eval`, `new Function`,
    `Function(...)`, strings passed to `setTimeout` or `setInterval`, dynamic `import()`,
-   `importScripts`, `WebAssembly`. A library you include is its readable source with its license
-   header, named with its version in `README.md`.
+   `importScripts`, `WebAssembly`, a `<script>` built from text. A library you include is its
+   readable source with its license header, named with its version in `README.md`, or a file of
+   `libraries.json` exactly as published there (section 9).
 2. **Only what the manifest declares:** every host, link, clipboard use, program, folder,
-   notice, drop, launcher, media use, watched program, local service and folder write. Every
+   notice, drop, launcher, media use, watched program, local service and folder write; the
+   screen, the pointer, the focus, the camera, the microphone, the position and WebRTC. Every
    address written in the code has its host in `network` or `links`, or is this computer on a
    port of `local.loopback`.
 3. **A web page loads nothing from the network** but data from the hosts in `network`: no
    scripts, styles, fonts or pictures from other sites, no `<iframe>` (also none made in a script)
    and nothing that reaches into a frame's window (`contentWindow`, `contentDocument`, `frames[ ]`),
-   no `RTCPeerConnection` or other WebRTC (it reaches any host), no `dns-prefetch` or
+   no `RTCPeerConnection` or other WebRTC unless `webrtc` is declared (then say in `README.md` with
+   whom it connects and what goes there), no `dns-prefetch` or
    `preconnect` (the browser connects to those hosts ahead, past the CSP).
 4. **Nothing sent in secret.** Send only what the plugin's visible purpose needs, and say in
    `README.md` what is sent and to which host or local service. Never send the user's files,
    file names, folder contents, clipboard, typed text, computer details, what plays or which
-   programs run unless that is the plugin's stated purpose.
+   programs run, the screen, the camera, the microphone, the position or where the pointer and
+   the focus are, unless that is the plugin's stated purpose.
 5. **Leave the system alone.** `pf.run` starts only the programs in `system`, for the purpose
    `README.md` states. No changes to autostart, scheduled tasks, services, the firewall, security
    software or system settings; no administrator rights; no ending other programs.
@@ -542,7 +574,8 @@ weather every 30 minutes, a computer's state every 2 to 5 seconds.
 ## 7. Develop and try it on your PC
 
 1. Install PecoFence (`minPecoFence` or later).
-2. Make a test feed and serve it on this computer only:
+2. Make a test feed (`index-3.json` and `index.json`, as the store publishes them) and serve it on
+   this computer only:
 
    ```powershell
    python tools\build-index.py --out C:\pf-feed --plugin plugins\my-plugin
@@ -604,13 +637,21 @@ you watch, point to the manifest entry that allows it.
   appears in PecoFence's list a few minutes later (the list is read again each time 设置 › 小工具
   opens).
 - The rules live only in this file at the root. A pull request that changes it, or anything
-  outside its one plugin folder, fails.
+  outside its one plugin folder, fails, except the one below.
+- A library (Chart.js, Day.js, marked, ...) goes into `libraries.json` with a pull request that
+  changes only that file: `{ "name", "version", "url", "sha256" }`, the address a `.js` file of an
+  npm package on `cdn.jsdelivr.net/npm/` or `unpkg.com/`, or of a project's release on GitHub, and
+  that file's SHA-256. The review fetches each new address and compares the hash; when all match,
+  the pull request is merged. A plugin then includes the file byte for byte (any name): the
+  checks and the review name it and do not read it.
 - Do not mention the maintainer: nobody reads the pull request unless something is wrong.
 
 ## 10. Reports and removal
 
 Report a plugin that breaks these rules with the *Report a plugin* issue form. A plugin found to
 break a hard rule is listed in `disabled.json`; it then shows as disabled in the list, and
-PecoFence turns it off. The signed `index.json` carries a `serial`, the number of commits on
+PecoFence turns it off (also PecoFence 0.5.0, whose `index.json` lists a plugin it cannot
+install as a stand-in carrying the take-down). The signed `index-3.json` and `index.json` carry a
+`serial`, the number of commits on
 `main`; PecoFence refuses an index with a lower serial than one it already read, so an old copy
 served again cannot bring a disabled plugin back.

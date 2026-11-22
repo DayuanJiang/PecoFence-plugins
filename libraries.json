@@ -1,0 +1,23 @@
+{
+ "note": "Library files plugins may include as they are published: each with its official address and the SHA-256 of that file. A plugin file with one of these hashes is named in the review, not read, and free of the text rules (AGENTS.md section 9). Add a library with a pull request that changes only this file; the review fetches the address and compares the hash.",
+ "libraries": [
+  {
+   "name": "chart.js",
+   "version": "4.4.1",
+   "url": "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js",
+   "sha256": "74401d738dd3e03ee5dfb3b6841210fe2c4ead8a960c4011ca4ba0b78a9fd8f3"
+  },
+  {
+   "name": "dayjs",
+   "version": "1.11.13",
+   "url": "https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js",
+   "sha256": "9cfdb93f38afcf2d076abecd66d32bfd3383cdf1967654ebc26a26605daf4173"
+  },
+  {
+   "name": "marked",
+   "version": "15.0.4",
+   "url": "https://cdn.jsdelivr.net/npm/marked@15.0.4/marked.min.js",
+   "sha256": "74c9f2e02c180c3e6caa09881a0b24032c86473af90acb1c87b6dc7255d491dd"
+  }
+ ]
+}

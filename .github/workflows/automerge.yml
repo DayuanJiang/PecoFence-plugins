@@ -25,6 +25,12 @@ jobs:
           files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | .filename, (.previous_filename // empty)')
           echo "Changed: $files"
           dirs=$(printf '%s\n' "$files" | awk -F/ '$1=="plugins" && NF>=3 {print $2; next} {print "<outside>"}' | sort -u)
+          # A pull request that adds a library to libraries.json merges the same way: its review
+          # fetches each new file from its official address and compares the SHA-256.
+          if [ "$files" = "libraries.json" ]; then
+            gh pr merge "$PR" --repo "$REPO" --auto --squash
+            exit 0
+          fi
           if [ "$(printf '%s\n' "$dirs" | wc -l)" -ne 1 ] || [ "$dirs" = "<outside>" ]; then
             echo "Not a change to one plugin folder: no auto-merge."
             exit 0

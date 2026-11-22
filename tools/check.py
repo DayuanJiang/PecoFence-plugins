@@ -2,10 +2,12 @@
 """Static check of one plugin folder against AGENTS.md sections 1, 2, 4 and 5.
 
 Usage: python3 tools/check.py plugins/<id> [--base <git ref>] [--pr-author <login>]
+       python3 tools/check.py --libraries   (libraries.json, for a pull request that changes only it)
 Prints one line per finding and ends with "RESULT: PASS" or "RESULT: FAIL" (exit code 0 or 1).
 WARN lines do not fail the check; the review reads them.
 """
 import argparse
+import hashlib
 import json
 import math
 import pathlib
@@ -13,17 +15,36 @@ import re
 import subprocess
 import sys
 
-API = 2
+API = 3
+# The first PecoFence that knows interface 3 (API3_RELEASE in PecoFence's plugins.rs).
+API3_RELEASE = "0.6.0"
 LANGS = {"en", "zh-CN", "zh-TW", "ja", "ko", "de", "fr", "es", "pt-BR", "ru", "it"}
 TOP_KEYS = {"id", "version", "api", "layer", "name", "description", "author", "minPecoFence",
             "permissions", "settings"}
 # Interface 2: a manifest using any of these says api 2 (PecoFence's API2_FIELDS).
 API2 = ["commands", "drop", "launch", "media", "apps", "local"]
-PERM_KEYS = {"network", "links", "clipboard", "background", "system", "folders", "notify", *API2}
+# Interface 3: true or false each (PecoFence's API3_FIELDS).
+API3 = ["screen", "pointer", "focus", "camera", "microphone", "location", "webrtc"]
+PERM_KEYS = {"network", "links", "clipboard", "background", "system", "folders", "notify", *API2, *API3}
 MEDIA = ["none", "read", "control"]
 DROPS = {"files", "text", "links"}
 CLIPBOARD = ["none", "write", "read", "readwrite"]
-FOLDERS = ["none", "read", "readwrite"]
+FOLDERS = ["none", "read", "readwrite", "any"]
+# A shortcut a command brings (interface 3), as PecoFence's Hotkey::parse reads it, with Shift
+# or Win in it (Ctrl+Alt+letter is AltGr on German, French, Polish and other layouts).
+KEY = re.compile(r"(?i)((ctrl|alt|shift|win)\+){1,4}([a-z0-9]|f([1-9]|1[0-9]|2[0-4])|num[0-9]|space|enter|tab|esc|"
+                 r"backspace|insert|delete|home|end|pageup|pagedown|up|down|left|right)")
+RESERVED_KEYS = {"ctrl+space", "alt+space", "alt+tab", "alt+shift+tab", "ctrl+alt+tab", "alt+esc", "ctrl+esc",
+                 "ctrl+shift+esc", "alt+f4", "ctrl+alt+delete", "ctrl+a", "ctrl+c", "ctrl+v", "ctrl+x", "ctrl+z",
+                 "ctrl+y", "ctrl+s"}
+# A page's inline code and data:/blob: addresses: interface 3 (PecoFence 0.5.0 blocks them).
+INLINE = [
+    (r"<script\b(?![^>]*\bsrc\s*=)[^>]*>\s*\S", "an inline <script>"),
+    (r"<style\b", "a <style> element"),
+    (r"<[a-z][^>]*\sstyle\s*=", "a style=\"...\" attribute"),
+    (r"<[a-z][^>]*\son[a-z]+\s*=", "an on...=\"...\" attribute"),
+    (r"(?i)\b(src|href)\s*=\s*['\"]?\s*(data|blob):|url\(\s*['\"]?\s*(data|blob):", "a data: or blob: address"),
+]
 # local: ports of this computer (loopback) and of the device the user types (lan).
 LOCAL = ("loopback", "lan")
 # Ports PecoFence refuses in permissions.local: debuggers and remote administration
@@ -35,6 +56,13 @@ LOOPBACK = re.compile(r"localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}")
 SETTING_TYPES = {"text", "number", "switch", "choice", "secret", "device"}
 SIZES = {"plugin.json": 64 << 10, "README.md": 64 << 10, "main.js": 200 << 10, "screenshot.png": 300 << 10}
 OTHER_SIZE, TOTAL_SIZE, MAX_FILES = 1 << 20, 5 << 20, 100
+# Interface 3's sizes (PecoFence's FILES, OTHER_SIZE, MAX_FILES, MAX_TOTAL from 0.6.0); the ones
+# above are interface 2's, which PecoFence 0.5.0 keeps to.
+SIZES3 = {**SIZES, "main.js": 1 << 20}
+OTHER_SIZE3, TOTAL_SIZE3, MAX_FILES3 = 5 << 20, 20 << 20, 500
+# Library files whose official SHA-256 is listed (L6): named in the review, not read, and free of
+# the text rules; adding one is a pull request that changes only libraries.json.
+LIBRARIES = pathlib.Path(__file__).resolve().parent.parent / "libraries.json"
 WEB_EXT = {".html", ".js", ".css", ".json", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff2"}
 TEXT_EXT = {".html", ".js", ".css", ".json", ".svg", ".md"}
 CODE_EXT = {".html", ".js", ".css", ".svg"}
@@ -95,11 +123,32 @@ USES = [
     ("apps", r"\bpf\.apps\.|\bpf\.on\(\s*['\"`]apps['\"`]", "pf.apps or the apps event"),
     ("drop", r"\bpf\.on\(\s*['\"`]drop['\"`]", "the drop event"),
     ("dropfiles", r"\bpf\.drop\.", "pf.drop"),
+    # Interface 3.
+    ("pointer", r"\bpf\.pointer\s*\(|\bpf\.on\(\s*['\"`]pointer['\"`]", "pf.pointer or the pointer event"),
+    ("focus", r"\bpf\.(focus|caret)\s*\(|\bpf\.on\(\s*['\"`]focus['\"`]", "pf.focus, pf.caret or the focus event"),
+    ("screen", r"\bgetDisplayMedia\b", "getDisplayMedia (the screen)"),
+    ("media_devices", r"\bgetUserMedia\b", "getUserMedia (the camera or the microphone)"),
+    ("location", r"\bgeolocation\b", "geolocation"),
+    ("webrtc", r"\b(webkit)?RTC(PeerConnection|DataChannel)\b", "WebRTC"),
+    ("notify", r"\bnew\s+Notification\s*\(|\bNotification\.requestPermission\b", "the web page's Notification"),
+    ("folderany", r"\bpf\.folder\.writeBytes\s*\(", "pf.folder.writeBytes"),
 ]
 URL = re.compile(r"(?i)\b(?:https?|wss?)://([^\s/\"'`<>()\\?#]+)")
 BUILT_URL = re.compile(r"(?i)['\"`](?:https?|wss?)://['\"`]?\s*\+|`(?:https?|wss?)://\$\{")
 
 failures = 0
+# What the plugin uses that only interface 3 has: it then says api 3 and minPecoFence 0.6.0 or
+# later (checked at the end, in main).
+needs3 = []
+
+
+def libraries():
+    """The SHA-256 of each listed library file (libraries.json), with its name and version."""
+    try:
+        listed = json.loads(LIBRARIES.read_text(encoding="utf-8")).get("libraries", [])
+    except (OSError, ValueError):
+        return {}
+    return {lib["sha256"]: f"{lib['name']} {lib['version']}" for lib in listed if isinstance(lib, dict) and "sha256" in lib}
 
 
 def fail(msg):
@@ -195,8 +244,10 @@ def check_files(root, layer):
         if layer == "web" and rel not in SIZES and ext not in WEB_EXT:
             fail(f"{rel}: a web plugin's files are {', '.join(sorted(WEB_EXT))} (AGENTS.md section 1)")
             continue
-        if len(data) > SIZES.get(rel, OTHER_SIZE):
-            fail(f"{rel} is {len(data)} bytes, more than {SIZES.get(rel, OTHER_SIZE)}")
+        if len(data) > SIZES3.get(rel, OTHER_SIZE3):
+            fail(f"{rel} is {len(data)} bytes, more than {SIZES3.get(rel, OTHER_SIZE3)}")
+        elif len(data) > SIZES.get(rel, OTHER_SIZE):
+            needs3.append(f"{rel} over {SIZES.get(rel, OTHER_SIZE)} bytes")
         if ext in TEXT_EXT:
             try:
                 text = data.decode("utf-8-sig")
@@ -210,16 +261,25 @@ def check_files(root, layer):
     for name in need:
         if name not in files:
             fail(f"missing {name}")
-    if len(files) > MAX_FILES or total > TOTAL_SIZE:
-        fail(f"{len(files)} files, {total} bytes: at most {MAX_FILES} files and {TOTAL_SIZE} bytes")
+    if len(files) > MAX_FILES3 or total > TOTAL_SIZE3:
+        fail(f"{len(files)} files, {total} bytes: at most {MAX_FILES3} files and {TOTAL_SIZE3} bytes")
+    elif len(files) > MAX_FILES or total > TOTAL_SIZE:
+        needs3.append(f"more than {MAX_FILES} files or {TOTAL_SIZE} bytes")
     return files
 
 
 def folders(p):
-    """permissions.folders as PecoFence ranks it: 0 none (false), 1 read (true), 2 readwrite; None
-    for anything else."""
+    """permissions.folders as PecoFence ranks it: 0 none (false), 1 read (true), 2 readwrite, 3 any;
+    None for anything else."""
     f = p.get("folders", False)
     return int(f) if isinstance(f, bool) else FOLDERS.index(f) if f in FOLDERS else None
+
+
+# Interface 3's hosts besides names with a dot: an IPv4 address, an IPv6 address in brackets, a
+# name without a dot (nas, localhost). A private or loopback address goes by the rules of local.
+IPV4 = re.compile(r"((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)")
+IPV6 = re.compile(r"\[[0-9a-f:.]{2,45}\]")
+DOTLESS = re.compile(r"[a-z]([a-z0-9-]{0,61}[a-z0-9])?")
 
 
 def check_hosts(hosts, field):
@@ -227,11 +287,32 @@ def check_hosts(hosts, field):
         fail(f"permissions.{field} is a list of host names")
         return []
     for h in hosts:
-        if not HOST.fullmatch(h) or h == "localhost" or re.fullmatch(r"[\d.]+", h):
-            fail(f"permissions.{field}: '{h}' is not a host name in lower case (no IP addresses, no localhost)")
+        if HOST.fullmatch(h):
+            continue
+        if IPV4.fullmatch(h) or IPV6.fullmatch(h) or DOTLESS.fullmatch(h):
+            needs3.append(f"the host {h} (an IP address or a name without a dot)")
+        else:
+            fail(f"permissions.{field}: '{h}' is not a host name in lower case, an IP address or a name without a dot")
     if len(hosts) > 20 or len(set(hosts)) != len(hosts):
         fail(f"permissions.{field}: at most 20 hosts, each once")
     return hosts
+
+
+def check_key(c):
+    """A command's own shortcut (interface 3)."""
+    key = c.get("key")
+    if key is None:
+        return
+    mods = {m.lower() for m in str(key).split("+")[:-1]} if isinstance(key, str) else set()
+    if not isinstance(key, str) or not KEY.fullmatch(key) or len(mods) != len(str(key).split("+")[:-1]):
+        fail(f"permissions.commands {c.get('id')} key {key!r} is not modifiers and a key joined by +, such as Ctrl+Shift+M")
+    elif not mods & {"ctrl", "alt", "win"} or mods == {"win"} or not mods & {"shift", "win"}:
+        fail(f"permissions.commands {c.get('id')} key {key}: a key of its own holds Ctrl, Alt or Win, and Shift or Win "
+             "(Win alone is Windows' own; Ctrl+Alt is AltGr on many keyboards)")
+    elif key.lower() in RESERVED_KEYS:
+        fail(f"permissions.commands {c.get('id')} key {key} is a common Windows shortcut")
+    else:
+        needs3.append(f"the command key {key}")
 
 
 def check_api2(p, api, settings):
@@ -241,7 +322,7 @@ def check_api2(p, api, settings):
         used.append("folders readwrite")
     kinds = [s.get("type") for s in settings if isinstance(s, dict)] if isinstance(settings, list) else []
     used += [f"{k} settings" for k in ("secret", "device") if k in kinds]
-    if used and api != 2:
+    if used and (type(api) is not int or api < 2):
         fail(f"{', '.join(used)} need api 2")
     commands = p.get("commands", [])
     ids = [c.get("id") for c in commands if isinstance(c, dict)] if isinstance(commands, list) else []
@@ -252,6 +333,9 @@ def check_api2(p, api, settings):
     else:
         for c in commands:
             texts_ok(c.get("title"), f"permissions.commands {c['id']} title", 40)
+            check_key(c)
+            for k in sorted(set(c) - {"id", "title", "key"}):
+                fail(f"permissions.commands {c['id']} has the unknown field '{k}'")
     drop = p.get("drop", [])
     if not isinstance(drop, list) or not all(isinstance(d, str) and d in DROPS for d in drop) \
             or len(set(drop)) != len(drop):
@@ -266,8 +350,10 @@ def check_api2(p, api, settings):
         fail("permissions.apps is a list of at most 20 program names ending in .exe (spotify.exe), no paths")
     ports = local_ports(p)
     if ports is None:
-        fail("permissions.local is { loopback: [{ port, app }], lan: [{ port, app }] }: at most 4 ports in all, "
-             "each a number 1 to 65535 once in its list, app the program's name (1 to 40 characters)")
+        fail("permissions.local is { loopback: [{ port, app }], lan: [{ port, app }] }: "
+             "each port a number 1 to 65535 once in its list, app the program's name (1 to 40 characters)")
+    elif len(ports) > 4:
+        needs3.append("more than 4 local ports")
     elif ports & {(c, port) for c in LOCAL for port in REFUSED_PORTS}:
         fail(f"permissions.local: the ports {sorted(port for _, port in ports if port in REFUSED_PORTS)} are "
              "debugging or administration ports PecoFence refuses")
@@ -291,7 +377,7 @@ def local_ports(p):
                     or not isinstance(app, str) or not app.strip() or len(app) > 40 or set(e) - {"port", "app"}:
                 return None
             ports.add((c, port))
-    return ports if len(ports) <= 4 else None
+    return ports
 
 
 def check_manifest(m, pid):
@@ -306,7 +392,7 @@ def check_manifest(m, pid):
         if not version_ok(m.get(key)):
             fail(f"{key} {m.get(key)!r} is not x.y.z")
     if type(m.get("api")) is not int or not 1 <= m["api"] <= API:
-        fail(f"api is {m.get('api')!r}; this repository knows api 1 and 2")
+        fail(f"api is {m.get('api')!r}; this repository knows api 1, 2 and 3")
     if m.get("layer") not in ("light", "web"):
         fail(f"layer is {m.get('layer')!r}, not light or web")
     texts_ok(m.get("name"), "name", 60)
@@ -323,21 +409,29 @@ def check_manifest(m, pid):
     check_hosts(p.get("links", []), "links")
     if p.get("clipboard", "none") not in CLIPBOARD:
         fail(f"permissions.clipboard is one of {', '.join(CLIPBOARD)}")
-    for key in ("background", "notify"):
+    for key in ("background", "notify", *API3):
         if not isinstance(p.get(key, False), bool):
             fail(f"permissions.{key} is true or false")
+    needs3.extend(f"permissions.{key}" for key in API3 if p.get(key) is True)
     if folders(p) is None:
-        fail('permissions.folders is "none", "read" or "readwrite" (false is none, true is read)')
+        fail('permissions.folders is "none", "read", "readwrite" or "any" (false is none, true is read)')
+    elif folders(p) == 3:
+        needs3.append('permissions.folders "any"')
     system = p.get("system", [])
-    # As PecoFence reads it: 5 to 260 bytes (UTF-8) ending in .exe, a name in System32 or a full
-    # path whose parts are not empty and not "..", without control characters.
-    if not isinstance(system, list) or len(system) > 20 or not all(
+    # As PecoFence reads it: 5 to 260 bytes (UTF-8) ending in .exe (interface 3 also .cmd, .bat,
+    # .ps1), a name in System32 or a full path whose parts are not empty and not "..", without
+    # control characters.
+    if not isinstance(system, list) or not all(
             isinstance(s, str) and 5 <= len(s.encode()) <= 260
-            and (re.fullmatch(r"[A-Za-z]:\\[^/:*?\"<>|\x00-\x1f]+\.exe", s, re.I | re.A)
+            and (re.fullmatch(r"[A-Za-z]:\\[^/:*?\"<>|\x00-\x1f]+\.(exe|cmd|bat|ps1)", s, re.I | re.A)
                  and not any(part in ("", "..") for part in s[3:].split("\\"))
-                 or re.fullmatch(r"[A-Za-z0-9._-]+\.exe", s, re.I | re.A)) for s in system):
-        fail("permissions.system is a list of at most 20 programs ending in .exe: a full path (C:\\...\\x.exe, "
-             "no empty part and no '..') or a name in System32 (x.exe)")
+                 or re.fullmatch(r"[A-Za-z0-9._-]+\.(exe|cmd|bat|ps1)", s, re.I | re.A)) for s in system):
+        fail("permissions.system is a list of programs ending in .exe (interface 3 also .cmd, .bat, .ps1): a full path "
+             "(C:\\...\\x.exe, no empty part and no '..') or a name in System32 (x.exe)")
+    else:
+        needs3.extend(f"the script {s} in permissions.system" for s in system if not s.lower().endswith(".exe"))
+        if len(system) > 20:
+            needs3.append("more than 20 programs in permissions.system")
     check_api2(p, m.get("api"), m.get("settings"))
     settings = m.get("settings", [])
     if not isinstance(settings, list) or len(settings) > 20:
@@ -397,11 +491,14 @@ def check_update(m, pid, base, pr_author):
         more.append(f"clipboard {oc} to {nc}")
     if m.get("layer") != old.get("layer"):
         more.append(f"layer {old.get('layer')} to {m.get('layer')}")
-    more += [f"{k} turned on" for k in ("background", "notify", "launch") if n.get(k) and not o.get(k)]
+    more += [f"{k} turned on" for k in ("background", "notify", "launch", *API3) if n.get(k) and not o.get(k)]
     # Interface 2, as PecoFence's more_permissions: command ids exactly, drops and apps in any case.
     ids = lambda d: {c.get("id") for c in d.get("commands", []) if isinstance(c, dict)}
     lower = lambda d, k: {str(x).lower() for x in d.get(k, [])}
     more += [f"commands: {sorted(map(str, ids(n) - ids(o)))}"] if ids(n) - ids(o) else []
+    # Interface 3: a command's own key added or changed (one taken away asks nothing).
+    keys = lambda d: {c.get("id"): c.get("key") for c in d.get("commands", []) if isinstance(c, dict)}
+    more += [f"command {i} key {k}" for i, k in keys(n).items() if k and i in keys(o) and keys(o)[i] != k]
     more += [f"{k}: {sorted(lower(n, k) - lower(o, k))}" for k in ("drop", "apps") if lower(n, k) - lower(o, k)]
     level = lambda d: MEDIA.index(d.get("media")) if d.get("media") in MEDIA else 0
     if level(n) > level(o):
@@ -428,11 +525,19 @@ def check_code(files, p, layer):
             "notify": bool(p.get("notify")), "links": bool(network | links),
             "launch": p.get("launch") is True, "media": p.get("media") in ("read", "control"),
             "control": p.get("media") == "control", "apps": bool(p.get("apps")), "drop": bool(p.get("drop")),
-            "dropfiles": "files" in (p.get("drop") or [])}
-    used, seen = set(), set()
+            "dropfiles": "files" in (p.get("drop") or []),
+            **{k: p.get(k) is True for k in ("pointer", "focus", "screen", "location", "webrtc")},
+            "media_devices": p.get("camera") is True or p.get("microphone") is True, "folderany": folders(p) == 3}
+    used, seen, known = set(), set(), libraries()
     for rel, data in files.items():
         ext = pathlib.PurePosixPath(rel).suffix.lower()
         if ext not in CODE_EXT and ext != ".json" or rel == "plugin.json":
+            continue
+        # A library file of libraries.json (its official SHA-256): not read by the review and free
+        # of the text rules; what the plugin's own code does with it is checked there.
+        library = known.get(hashlib.sha256(data).hexdigest())
+        if library:
+            print(f"PASS: {rel} is {library} (libraries.json)")
             continue
         text = data.decode("utf-8-sig", errors="replace")
         lines = text.splitlines()
@@ -442,9 +547,13 @@ def check_code(files, p, layer):
                 fail(f"{rel}:{long[0]} has a line of {len(lines[long[0] - 1])} characters: minified or generated code is not readable")
             web = (EXTERNAL if ext != ".js" else []) + WEB_CODE if layer == "web" else []
             for pattern, what in FORBIDDEN + web:
+                if p.get("webrtc") is True and "WebRTC" in what:
+                    continue
                 for mt in re.finditer(pattern, text):
                     fail(f"{rel}:{text.count(chr(10), 0, mt.start()) + 1} {what}")
                     break
+            if layer == "web" and ext == ".html":
+                needs3.extend(f"{what} in {rel}" for pattern, what in INLINE if re.search(pattern, text))
             if ext == ".svg" and re.search(r"(?i)<script\b|\son\w+\s*=", text):
                 fail(f"{rel} is a picture with code in it (<script> or on...=)")
             for need, pattern, what in USES:
@@ -454,7 +563,8 @@ def check_code(files, p, layer):
                         perm = {"network": "network or local", "read": "clipboard read or readwrite",
                                 "write": "clipboard write or readwrite", "folderwrite": 'folders "readwrite"',
                                 "links": "network or links", "media": "media read or control",
-                                "control": "media control", "dropfiles": "drop files"}.get(need, need)
+                                "control": "media control", "dropfiles": "drop files",
+                                "media_devices": "camera or microphone", "folderany": 'folders "any"'}.get(need, need)
                         fail(f"{rel} uses {what}, but plugin.json does not declare permissions.{perm}")
             if BUILT_URL.search(text):
                 warn(f"{rel} builds an address at run time: the run check and the review check where it goes")
@@ -504,12 +614,48 @@ def check_code(files, p, layer):
             fail(f"README.md does not say why the plugin starts {prog}")
 
 
+# Where a listed library comes from: an npm package's file as jsDelivr or unpkg serve it, or a
+# project's release on GitHub (the review fetches it and compares the SHA-256).
+LIBRARY_URL = re.compile(r"https://(cdn\.jsdelivr\.net/npm/|unpkg\.com/|github\.com/[\w.-]+/[\w.-]+/releases/download/)"
+                         r"[\w@./+-]+\.js")
+
+
+def check_libraries():
+    """libraries.json: { libraries: [{ name, version, url, sha256 }] }, each hash once."""
+    try:
+        listed = read_json(LIBRARIES.read_bytes()).get("libraries")
+    except (OSError, ValueError, AttributeError) as e:
+        fail(f"libraries.json is not readable JSON: {e}")
+        return
+    if not isinstance(listed, list):
+        fail("libraries.json is { libraries: [{ name, version, url, sha256 }] }")
+        return
+    hashes = set()
+    for i, lib in enumerate(listed):
+        good = isinstance(lib, dict) and set(lib) == {"name", "version", "url", "sha256"} and all(
+            isinstance(v, str) for v in lib.values())
+        if not good or not re.fullmatch(r"[a-z0-9@/._-]{1,100}", lib["name"]) \
+                or not re.fullmatch(r"[0-9A-Za-z.+-]{1,40}", lib["version"]) or not LIBRARY_URL.fullmatch(lib["url"]) \
+                or not re.fullmatch(r"[0-9a-f]{64}", lib["sha256"]):
+            fail(f"libraries[{i}] is {{ name, version, url, sha256 }}: a small-letter name, a version, a .js file at "
+                 "cdn.jsdelivr.net/npm, unpkg.com or a GitHub release, and the file's SHA-256 in small hex digits")
+        elif lib["sha256"] in hashes:
+            fail(f"libraries[{i}] ({lib['name']}) has the SHA-256 of another entry")
+        else:
+            hashes.add(lib["sha256"])
+    print(f"PASS: libraries.json lists {len(hashes)} files" if not failures else "")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("plugin")
+    ap.add_argument("plugin", nargs="?")
+    ap.add_argument("--libraries", action="store_true", help="check libraries.json only")
     ap.add_argument("--base", default="", help="git ref of the target branch, for updates")
     ap.add_argument("--pr-author", default="", help="GitHub login of the pull request's author")
     args = ap.parse_args()
+    if args.libraries or not args.plugin:
+        check_libraries()
+        finish()
     root = pathlib.Path(args.plugin).resolve()
     pid = root.name
     try:
@@ -533,6 +679,11 @@ def main():
     check_code(files, p, layer)
     if failures == before:
         print("PASS: code rules")
+    # Interface 3: what PecoFence 0.5.0 drops or blocks needs api 3 and minPecoFence 0.6.0 or later.
+    if needs3 and m.get("api") != 3:
+        fail(f"{'; '.join(dict.fromkeys(needs3))}: need api 3")
+    if m.get("api") == 3 and version_ok(m.get("minPecoFence")) and version(m["minPecoFence"]) < version(API3_RELEASE):
+        fail(f"api 3 needs minPecoFence {API3_RELEASE} or later (the first PecoFence that knows it)")
     finish()
 
 

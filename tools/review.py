@@ -8,6 +8,8 @@
 # (workflow_run, with HEAD_SHA in place of PR).
 # Environment: GH_TOKEN (pull requests write, checks read), REPO (owner/name), PR (number) or
 # HEAD_SHA (the commit whose checks completed); AWS credentials for us-east-1.
+import difflib
+import hashlib
 import json
 import os
 import pathlib
@@ -26,9 +28,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # The second model runs only when the first one declines the request.
 MODELS = ["anthropic.claude-opus-5-5", "anthropic.claude-opus-4-8"]
 TEXT_EXT = (".json", ".js", ".html", ".css", ".svg", ".md")
-# The most bytes of text (new and old versions) one review reads: about 60,000 tokens, which
-# bounds what each push can cost.
-MAX_TEXT = 200_000
+# The most bytes of text one review reads: the new version, plus for an update its diff to the old
+# one (about 300,000 tokens at most), which bounds what each push can cost. A library file of
+# libraries.json is named, not read, and does not count.
+MAX_TEXT = 1_000_000
+# Where a library of libraries.json may come from (tools/check.py, LIBRARY_URL), and its most bytes.
+LIBRARY_HOSTS = ("https://cdn.jsdelivr.net/npm/", "https://unpkg.com/", "https://github.com/")
+LIBRARY_MAX = 5 << 20
 # How long the review waits for the static check of the same commit.
 STATIC_WAIT = 20 * 60
 # The first line of the comment that says the review comes after the checks of a commit.
@@ -111,6 +117,51 @@ def one_plugin(files):
     return ids.pop()
 
 
+def listed_libraries(ref="main"):
+    """libraries.json at `ref` as {sha256: entry}; {} when there is none."""
+    data = content("libraries.json", ref)
+    try:
+        listed = json.loads(data.decode("utf-8-sig")).get("libraries", []) if data else []
+    except (ValueError, AttributeError):
+        return {}
+    return {lib["sha256"]: lib for lib in listed if isinstance(lib, dict) and isinstance(lib.get("sha256"), str)}
+
+
+def review_libraries(pr):
+    """A pull request that changes only libraries.json: each new entry's file is fetched from its
+    official address and its SHA-256 compared; all match: approved (GitHub then merges it)."""
+    head, base = pr["head"]["sha"], pr["base"]["sha"]
+    if not static_passed(head):
+        print("The static check did not pass: no automatic review.")
+        return 0
+    old, new = listed_libraries(base), listed_libraries(head)
+    problems = []
+    for sha, lib in new.items():
+        if sha in old and old[sha] == lib:
+            continue
+        url = str(lib.get("url", ""))
+        if not url.startswith(LIBRARY_HOSTS) or ("github.com/" in url and "/releases/download/" not in url):
+            problems.append(f"{lib.get('name')}: {url} is not a file of jsDelivr's npm, unpkg or a GitHub release")
+            continue
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "pecofence-plugins-review"}),
+                                        timeout=60) as r:
+                data = r.read(LIBRARY_MAX + 1)
+        except (urllib.error.URLError, OSError) as e:
+            problems.append(f"{lib.get('name')}: {url} could not be fetched ({type(e).__name__})")
+            continue
+        got = hashlib.sha256(data).hexdigest()
+        if len(data) > LIBRARY_MAX or got != sha:
+            problems.append(f"{lib.get('name')}: the file at {url} has the SHA-256 {got}, not {sha}")
+    added = [f"{lib['name']} {lib['version']}" for sha, lib in new.items() if sha not in old]
+    if problems:
+        post_review(head, "REQUEST_CHANGES", "**Automatic review of libraries.json**\n\n" + "\n".join(f"- {x}" for x in problems))
+    else:
+        post_review(head, "APPROVE", "**Automatic review of libraries.json**\n\nEach new file matches its official "
+                    f"address: {', '.join(added) or 'nothing new'}.")
+    return 0
+
+
 def post_review(sha, event, body):
     gh(f"/repos/{REPO}/pulls/{PR}/reviews", "POST", {"commit_id": sha, "event": event, "body": body})
     print(f"posted {event}")
@@ -135,6 +186,8 @@ def static_passed(head):
 def review(pr):
     head, base = pr["head"]["sha"], pr["base"]["sha"]
     files = pages(f"/repos/{REPO}/pulls/{PR}/files")
+    if [f["filename"] for f in files] == ["libraries.json"] and not files[0].get("previous_filename"):
+        return review_libraries(pr)
     pid = one_plugin(files)
     if not pid:
         print("Not a change to one plugin folder: no automatic review.")
@@ -157,23 +210,34 @@ def review(pr):
     begin, end = f"BEGIN-{token}", f"END-{token}"
     parts = [f"{begin} pull request #{PR} by {pr['user']['login']}: its title, then its body\n"
              f"{pr['title']}\n\n{pr.get('body') or ''}\n{end}"]
-    size = 0
+    size, known = 0, listed_libraries()
     new, old = plugin_files(pid, head), set(plugin_files(pid, base))
     for path in new + sorted(old - set(new)):
         if not path.lower().endswith(TEXT_EXT):
             parts.append(f"{begin} file {path}, {'new' if path in new else 'old'} version\n"
                          f"(a picture or font, not shown)\n{end}")
             continue
-        for label, ref in (("new", head), ("old", base)):
-            data = content(path, ref) if label == "new" or path in old else None
-            if data is None:
-                continue
-            size += len(data)
-            parts.append(f"{begin} file {path}, {label} version\n"
-                         f"{data.decode('utf-8-sig', errors='replace')}\n{end}")
+        if path not in new:
+            parts.append(f"{begin} file {path}: removed in this pull request\n{end}")
+            continue
+        data = content(path, head)
+        lib = known.get(hashlib.sha256(data).hexdigest())
+        if lib:
+            parts.append(f"{begin} file {path}, new version\n(the library {lib['name']} {lib['version']} as published "
+                         f"at {lib['url']}: its SHA-256 is listed in libraries.json, not shown)\n{end}")
+            continue
+        text = data.decode("utf-8-sig", errors="replace")
+        size += len(data)
+        parts.append(f"{begin} file {path}, new version\n{text}\n{end}")
+        before = content(path, base) if path in old else None
+        if before is not None and before != data:
+            diff = "".join(difflib.unified_diff(before.decode("utf-8-sig", errors="replace").splitlines(True),
+                                                text.splitlines(True), f"old/{path}", f"new/{path}"))
+            size += len(diff.encode())
+            parts.append(f"{begin} file {path}, what changed since the old version (unified diff)\n{diff}\n{end}")
     if size > MAX_TEXT:
         post_review(head, "REQUEST_CHANGES", "**Automatic review**\n\nThe plugin's text files are too large to review "
-                    f"({size} bytes of text, new and old versions together; at most {MAX_TEXT}).")
+                    f"({size} bytes of text, the new version and its changes; at most {MAX_TEXT}).")
         return 0
 
     rules = (ROOT / "AGENTS.md").read_text(encoding="utf-8")

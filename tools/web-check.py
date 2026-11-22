@@ -15,7 +15,9 @@ Usage: python3 tools/web-check.py plugins/<id> [--seconds 20] [--settings JSON] 
 Needs: pip install playwright && playwright install chromium
 """
 import argparse
+import base64
 import collections
+import hashlib
 import json
 import pathlib
 import re
@@ -58,8 +60,8 @@ STUB = """
   // Reading and writing are two rights: read is 2 (read, readwrite), write is 1 (write, readwrite).
   const needClip = (n) => () => (n === 2 ? clip >= 2 : clip === 1 || clip === 3) ? "" : "permissions.clipboard does not allow it";
   const needFlag = (f) => () => P[f] ? "" : `permissions.${f} is not true`;
-  const folders = { true: 1, read: 1, readwrite: 2 }[P.folders] || 0;
-  const needFolders = (n) => () => folders >= n ? "" : n > 1 ? 'permissions.folders is not "readwrite"' : "permissions.folders does not read";
+  const folders = { true: 1, read: 1, readwrite: 2, any: 3 }[P.folders] || 0;
+  const needFolders = (n) => () => folders >= n ? "" : n > 2 ? 'permissions.folders is not "any"' : n > 1 ? 'permissions.folders is not "readwrite"' : "permissions.folders does not read";
   // The folder dialog picks this folder, as in pecofence-plugin-check. A write, mkdir or trash
   // rejects as in PecoFence (folder_write.rs): before a pick, a part of the path that starts with
   // a dot (.git, ..) or ends in a dot or a space, a colon or another sign Windows refuses, a device
@@ -76,8 +78,8 @@ STUB = """
     const why = !/^[a-z]:$/i.test(parts[0] || "") ? "not a full path with a drive" : parts.slice(1).map(partRefusal).find(Boolean)
       || (!picked ? "no folder is picked yet (pf.folder.pick)" : "")
       || (parts.join(SEP).toLowerCase().startsWith(PICKED.toLowerCase() + SEP) ? "" : `${path} is not inside a folder the user picked`)
-      || (name === "folder.write" && !DATA.test(parts[parts.length - 1]) ? "only these kinds of files: txt md json csv log ics png jpg gif webp" : "");
-    return needFolders(2)() || (why && `rejected: ${name}: ${why}`);
+      || (name === "folder.write" && folders < 3 && !DATA.test(parts[parts.length - 1]) ? "only these kinds of files: txt md json csv log ics png jpg gif webp" : "");
+    return needFolders(name === "folder.writeBytes" ? 3 : 2)() || (why && `rejected: ${name}: ${why}`);
   };
   // pf.http: a network host, or a port of permissions.local: loopback on this computer by name,
   // lan only to the address typed in a device setting (none unless --settings gives one).
@@ -108,9 +110,27 @@ STUB = """
   const dropped = (i, answer) => () => !(P.drop || []).includes("files") ? "permissions.drop does not take files"
     : i === 0 ? "" : "pf.drop: the drop has 1 files";
   document.addEventListener("securitypolicyviolation", (e) => window.__pfCsp(`${e.effectiveDirective || e.violatedDirective} blocked ${e.blockedURI || "inline"}${e.sourceFile ? " (" + e.sourceFile.split("/").pop() + ":" + e.lineNumber + ")" : ""}`), true);
-  for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
+  // WebRTC only with permissions.webrtc (interface 3); the check has no network either way.
+  if (!P.webrtc) for (const k of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"]) {
     Object.defineProperty(window, k, { value: function () { record("webrtc", [k], "WebRTC is not allowed"); throw new TypeError("WebRTC is not allowed"); } });
   }
+  // The browser's own permissions (interface 3): the screen, the camera and the microphone, where
+  // the computer is, notifications (permissions.notify). Declared, a request is recorded and
+  // answers as on a computer without the device; undeclared, it is refused.
+  const deny = (name, field, args) => { const why = field ? `permissions.${field} is not true` : ""; record(name, args || [], why);
+    return Promise.reject(new DOMException(why || "the check has no such device", why ? "NotAllowedError" : "NotFoundError")); };
+  if (navigator.mediaDevices) {
+    navigator.mediaDevices.getDisplayMedia = (o) => deny("getDisplayMedia", P.screen ? "" : "screen", [o]);
+    navigator.mediaDevices.getUserMedia = (o) => deny("getUserMedia", o && o.video && !P.camera ? "camera" : o && o.audio && !P.microphone ? "microphone" : "", [o]);
+  }
+  if (navigator.geolocation) {
+    const geo = (ok, err) => { const why = P.location ? "" : "permissions.location is not true"; record("geolocation", [], why); if (err) err({ code: why ? 1 : 2, message: why || "no position in the check" }); };
+    navigator.geolocation.getCurrentPosition = geo; navigator.geolocation.watchPosition = (ok, err) => (geo(ok, err), 0);
+  }
+  const Note = function (title) { record("Notification", [title], P.notify ? "" : "permissions.notify is not true"); };
+  Note.permission = P.notify ? "granted" : "denied";
+  Note.requestPermission = () => { record("Notification.requestPermission", [], P.notify ? "" : "permissions.notify is not true"); return Promise.resolve(Note.permission); };
+  window.Notification = Note;
   window.__pfEmit = (name, json) => {
     const d = json === undefined ? null : JSON.parse(json);
     if (name === "settings" || name === "theme") state[name] = d;
@@ -138,6 +158,7 @@ STUB = """
     run: (p, a) => call("run", [p, a], () => (P.system || []).some((s) => s.toLowerCase() === String(p).toLowerCase()) ? "" : `${p} is not in permissions.system`, { code: 0, output: "" }),
     folder: { pick: () => { picked = picked || !needFolders(1)(); return call("folder.pick", [], needFolders(1), PICKED); }, list: (p) => call("folder.list", [p], needFolders(1), { items: [], cut: false }), read: (p) => call("folder.read", [p], needFolders(1), ""),
               write: (p, t) => call("folder.write", [p, t], inPicked("folder.write", p)), mkdir: (p) => call("folder.mkdir", [p], inPicked("folder.mkdir", p)),
+              writeBytes: (p, b) => call("folder.writeBytes", [p, String(b).slice(0, 16)], inPicked("folder.writeBytes", p)),
               trash: (p) => call("folder.trash", [p], inPicked("folder.trash", p), true) },
     notify: (t, b, o) => call("notify", [t, b, o], needFlag("notify")),
     // The shapes of AGENTS.md 3.1: one launcher item, the user cancels the dialog, a song plays.
@@ -150,6 +171,10 @@ STUB = """
              control: (a) => call("media.control", [a], pressNeeded("media.control", needMedia(2,
                () => ["playpause", "next", "previous"].includes(a) ? "" : `${a} is not playpause, next or previous`)), true) },
     apps: { running: () => call("apps.running", [], needApps, []), front: () => call("apps.front", [], needApps, null) },
+    // Interface 3: the pointer at the middle of a 1920 x 1080 screen, a focused box with its caret.
+    pointer: () => call("pointer", [], needFlag("pointer"), { x: 960, y: 540, monitor: { left: 0, top: 0, right: 1920, bottom: 1080 } }),
+    focus: () => call("focus", [], needFlag("focus"), { x: 400, y: 300, width: 300, height: 24 }),
+    caret: () => call("caret", [], needFlag("focus"), { x: 420, y: 302, width: 1, height: 20 }),
     drop: { text: (i) => call("drop.text", [i], dropped(i), "dropped notes"), read: (i) => call("drop.read", [i], dropped(i), "ZHJvcHBlZCBub3Rlcw=="),
             save: (i, n) => { data.set(n, "dropped notes"); return call("drop.save", [i, n], dropped(i)); } },
   };
@@ -160,10 +185,26 @@ STUB = """
 """
 
 
-def csp(network):
-    """The header PecoFence sends with each file (crates/app/src/web_plugin.rs, Plugin::csp)."""
+def inline_hashes(html):
+    """The 'sha256-...' of each inline <script> and on...= attribute of a page, as PecoFence lists
+    them in its CSP (interface 3): what the file holds runs, code a script makes later does not."""
+    scripts = re.findall(r"(?is)<script\b(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script\s*>", html)
+    handlers = [a or b for a, b in re.findall(r"""(?is)<[a-z][^>]*?\son[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')""", html)]
+    digest = lambda code: "'sha256-" + base64.b64encode(hashlib.sha256(code.encode()).digest()).decode() + "'"
+    return sorted({digest(c) for c in scripts + handlers})
+
+
+def csp(network, api=1, html=""):
+    """The header PecoFence sends with each file (crates/app/src/web_plugin.rs, Plugin::csp). With
+    api 3 a page may have inline styles, data: and blob: pictures, fonts and media, and the inline
+    scripts its own HTML holds (by their SHA-256)."""
     connect = "".join(f" https://{h} wss://{h}" for h in network)
-    return f"default-src 'self'; connect-src 'self'{connect}; frame-src 'none'; form-action 'none'"
+    if api < 3:
+        return f"default-src 'self'; connect-src 'self'{connect}; frame-src 'none'; form-action 'none'"
+    scripts = " ".join(["'self'", "'unsafe-hashes'", *inline_hashes(html)])
+    return (f"default-src 'self'; script-src {scripts}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+            f"font-src 'self' data: blob:; media-src 'self' data: blob:; worker-src 'self'; connect-src 'self'{connect}; "
+            "frame-src 'none'; form-action 'none'")
 
 
 # The type PecoFence gives each file by its extension (web_plugin.rs, mime), with nosniff: a
@@ -196,7 +237,8 @@ def main():
             settings[s["key"]] = re.sub(r"^https?://", "", settings[s["key"]].strip()).split("/")[0].split(":")[0].lower().rstrip(".")
     devices = [settings[s["key"]] for s in m.get("settings", []) if s.get("type") == "device" and settings.get(s["key"])]
     origin = f"https://{m['id']}.plugins.pecofence"
-    headers = {"Content-Security-Policy": csp(network), "X-Content-Type-Options": "nosniff"}
+    api = m.get("api") if isinstance(m.get("api"), int) else 1
+    headers = {"Content-Security-Policy": csp(network, api), "X-Content-Type-Options": "nosniff"}
     requests, sockets, calls, refused, errors, blocked, missing = [], [], collections.Counter(), [], [], [], []
     failures, notes = [], []
 
@@ -209,7 +251,11 @@ def main():
             plain = all(p not in ("", ".", "..") and not any(c in p for c in "\\:%") for p in path.split("/"))
             if plain and (root / path).is_file():
                 kind = MIME.get(path.rsplit(".", 1)[-1], "application/octet-stream")
-                return route.fulfill(status=200, body=(root / path).read_bytes(), headers={**headers, "Content-Type": kind})
+                body = (root / path).read_bytes()
+                own = {**headers, "Content-Type": kind}
+                if path.endswith(".html"):
+                    own["Content-Security-Policy"] = csp(network, api, body.decode("utf-8-sig", errors="replace"))
+                return route.fulfill(status=200, body=body, headers=own)
             # The browser asks for a tab icon by itself; a plugin has none.
             if url.path != "/favicon.ico":
                 missing.append(url.path)
