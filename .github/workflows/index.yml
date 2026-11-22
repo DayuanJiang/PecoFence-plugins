@@ -1,5 +1,6 @@
-# Publishes the feed PecoFence reads on the branch "index": index.json, its Ed25519 signature
-# index.json.sig (private key in the secret INDEX_SIGNING_KEY) and <commit>/plugins/<id>/<files>,
+# Publishes the feed PecoFence reads on the branch "index": index-3.json (PecoFence 0.6.0 and later),
+# index.json (0.5.0 and earlier), their Ed25519 signatures (private key in the secret
+# INDEX_SIGNING_KEY) and <commit>/plugins/<id>/<files>,
 # the layout the project website copies for PecoFence's third address. A merge made by the
 # automation starts no other workflow, so this also runs every hour.
 name: index
@@ -24,7 +25,7 @@ jobs:
         with:
           # The index's serial is the count of commits on main: it needs the whole history.
           fetch-depth: 0
-      - name: Build and sign index.json
+      - name: Build and sign index-3.json and index.json
         env:
           INDEX_SIGNING_KEY: ${{ secrets.INDEX_SIGNING_KEY }}
         run: |
@@ -39,9 +40,12 @@ jobs:
           # The raw file: the contents API's JSON leaves "content" empty for a file over 1 MB.
           # The signature too: a new key signs the same index.json differently (Ed25519 signs the
           # same bytes the same way, so an unchanged key and index publish nothing).
-          current=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/index.json?ref=index" 2>/dev/null || true)
-          current_sig=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/index.json.sig?ref=index" 2>/dev/null || true)
-          if [ "$current" = "$(cat "$RUNNER_TEMP/feed/index.json")" ] && [ "$current_sig" = "$(cat "$RUNNER_TEMP/feed/index.json.sig")" ]; then echo "index.json unchanged"; exit 0; fi
+          same=true
+          for f in index.json index.json.sig index-3.json index-3.json.sig; do
+            current=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$f?ref=index" 2>/dev/null || true)
+            [ "$current" = "$(cat "$RUNNER_TEMP/feed/$f")" ] || same=false
+          done
+          if [ "$same" = true ]; then echo "the indexes are unchanged"; exit 0; fi
           cd "$RUNNER_TEMP/feed"
           git init -q -b index
           git config user.name "github-actions[bot]"

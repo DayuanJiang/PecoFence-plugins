@@ -16,8 +16,9 @@ env:
   # The PecoFence commit whose crates/plugin-check the run check uses. It must be a commit pushed
   # to DayuanJiang/PecoFence that has the plugin host PecoFence ships (the owner sets it after
   # pushing PecoFence; README.md lists it). Raise it when PecoFence's plugin host changes.
-  # PecoFence 0.5.0 (tag v0.5.0): the plugin host it ships, with pf.show's caption.
-  PECOFENCE_COMMIT: cd6bda3474ae0692620dfdd51a26432bc0ef65de
+  # PecoFence 0.5.0 (tag v0.5.0): the plugin host it ships, with pf.show's caption. Raise it to the
+  # PecoFence commit with plugin interface 3 (pf.pointer, pf.focus, the new sizes) once that is merged.
+  PECOFENCE_COMMIT: 7a4b0cd23167aa736c634dab0fac69c8433c6a75
   PLAYWRIGHT_VERSION: 1.65.2
 
 jobs:
@@ -26,6 +27,7 @@ jobs:
     outputs:
       plugin: ${{ steps.which.outputs.plugin }}
       layer: ${{ steps.which.outputs.layer }}
+      libraries: ${{ steps.which.outputs.libraries }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,6 +41,11 @@ jobs:
           # folder or of the repository's own files is a change there).
           files=$(git diff --name-only --no-renames "$BASE" HEAD)
           echo "Changed: $files"
+          # A library added to libraries.json: a pull request of its own (AGENTS.md section 9).
+          if [ "$files" = "libraries.json" ]; then
+            echo "libraries=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           ids=$(printf '%s\n' "$files" | awk -F/ '$1=="plugins" && NF>=3 {print $2; next} {print "<outside>"}' | sort -u)
           if [ "$(printf '%s\n' "$ids" | wc -l)" -ne 1 ] || [ "$ids" = "<outside>" ]; then
             echo "::error::A pull request changes the files of one plugin folder and nothing else (AGENTS.md section 1)."
@@ -46,7 +53,11 @@ jobs:
           fi
           echo "plugin=$ids" >> "$GITHUB_OUTPUT"
           echo "layer=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8-sig")).get("layer", "light"))' "plugins/$ids/plugin.json" 2>/dev/null || echo light)" >> "$GITHUB_OUTPUT"
+      - name: libraries.json (tools/check.py --libraries)
+        if: steps.which.outputs.libraries == 'true'
+        run: python3 tools/check.py --libraries
       - name: Static check (tools/check.py)
+        if: steps.which.outputs.libraries != 'true'
         env:
           PLUGIN: ${{ steps.which.outputs.plugin }}
           BASE: ${{ github.event.pull_request.base.sha }}
@@ -61,6 +72,7 @@ jobs:
 
   dynamic:
     needs: static
+    if: needs.static.outputs.libraries != 'true'
     runs-on: ubuntu-latest
     env:
       PLUGIN: ${{ needs.static.outputs.plugin }}
