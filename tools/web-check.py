@@ -16,6 +16,7 @@ Needs: pip install playwright && playwright install chromium
 """
 import argparse
 import base64
+from html import unescape
 import collections
 import hashlib
 import json
@@ -188,8 +189,11 @@ STUB = """
 def inline_hashes(html):
     """The 'sha256-...' of each inline <script> and on...= attribute of a page, as PecoFence lists
     them in its CSP (interface 3): what the file holds runs, code a script makes later does not."""
+    # As the HTML parser hands them to the browser (and page_csp.rs does): \r\n and \r become \n,
+    # and an attribute's character references (&amp;, &quot;) are decoded before hashing.
+    html = html.replace("\r\n", "\n").replace("\r", "\n")
     scripts = re.findall(r"(?is)<script\b(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script\s*>", html)
-    handlers = [a or b for a, b in re.findall(r"""(?is)<[a-z][^>]*?\son[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')""", html)]
+    handlers = [unescape(a or b) for a, b in re.findall(r"""(?is)<[a-z][^>]*?\son[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')""", html)]
     digest = lambda code: "'sha256-" + base64.b64encode(hashlib.sha256(code.encode()).digest()).decode() + "'"
     return sorted({digest(c) for c in scripts + handlers})
 
