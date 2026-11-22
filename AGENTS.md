@@ -26,7 +26,7 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
 - Every folder may also have `screenshot.png` (one picture of the fence, at most 300 KB).
 - `<id>`: lower-case letters, digits and `-`, 3 to 40 characters, never changed after it is merged.
-- Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 512 KB (PecoFence 0.6.0 measured that a larger one does not start in the 8 MB engine), any other file at
+- Sizes: `plugin.json` and `README.md` at most 64 KB, `main.js` at most 512 KB (PecoFence 0.5.1 measured that a larger one does not start in the 8 MB engine), any other file at
   most 5 MB, the whole folder at most 20 MB and 500 files. A plugin past the sizes of interface 2
   (`main.js` 200 KB, another file 1 MB, 5 MB and 100 files in all) needs `api: 3` (section 2).
 - The automatic review (section 9) reads at most 1 MB of text: the `.json`, `.js`, `.html`,
@@ -68,7 +68,7 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
   plugin. `api` is the plugin interface version: `2` for a plugin that uses any of `commands`,
   `drop`, `launch`, `media`, `apps` or `local`, `folders` `"readwrite"`, or a `secret` or
   `device` setting (with `minPecoFence` `0.5.0` or later), else `1`. A PecoFence that knows only
-  interface 1 shows such a plugin as 需要更新 PecoFence. `3` (with `minPecoFence` `0.6.0` or
+  interface 1 shows such a plugin as 需要更新 PecoFence. `3` (with `minPecoFence` `0.5.1` or
   later) for a plugin that uses any of `screen`, `pointer`, `focus`, `camera`, `microphone`,
   `location`, `webrtc`, `folders` `"any"`, a command's `key`, a host that is an IP address or a
   name without a dot, a `.cmd`, `.bat` or `.ps1` in `system`, more than 20 programs or 4 local

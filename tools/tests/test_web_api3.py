@@ -16,7 +16,7 @@ def run(case, perms, files, expect, api=3):
     """`expect`: "PASS", or a text the FAIL output has."""
     global failed
     m = {"id": "webprobe", "version": "1.0.0", "api": api, "layer": "web", "name": {"en": "W"}, "description": {"en": "W"},
-         "author": "someone", "minPecoFence": "0.6.0", "permissions": perms}
+         "author": "someone", "minPecoFence": "0.5.1", "permissions": perms}
     with tempfile.TemporaryDirectory() as tmp:
         root = pathlib.Path(tmp) / "plugins" / "webprobe"
         root.mkdir(parents=True)
