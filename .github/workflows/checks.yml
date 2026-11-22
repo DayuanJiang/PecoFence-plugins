@@ -18,7 +18,7 @@ env:
   # pushing PecoFence; README.md lists it). Raise it when PecoFence's plugin host changes.
   # PecoFence 0.5.0 (tag v0.5.0): the plugin host it ships, with pf.show's caption. Raise it to the
   # PecoFence commit with plugin interface 3 (pf.pointer, pf.focus, the new sizes) once that is merged.
-  PECOFENCE_COMMIT: cd6bda3474ae0692620dfdd51a26432bc0ef65de
+  PECOFENCE_COMMIT: 7a4b0cd23167aa736c634dab0fac69c8433c6a75
   PLAYWRIGHT_VERSION: 1.65.2
 
 jobs:
