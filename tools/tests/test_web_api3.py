@@ -53,5 +53,32 @@ point = {"index.html": "<!doctype html><script src='a.js'></script>\n",
          "a.js": "pf.pointer().catch(() => {}); pf.caret().catch(() => {});\n"}
 run("pf.pointer and pf.caret declared", {"pointer": True, "focus": True}, point, "PASS")
 run("pf.caret without focus", {"pointer": True}, point, "permissions.focus is not true")
+many = ("<!doctype html><p id=a onclick=\"window.c = 1\" onmouseover='window.d = 2' ondblclick=window.e=3>x</p>"
+        "<p onclick=\"window.f = &#39;q&#39; &amp;&amp; 1\">y</p>"
+        "<script>for (const k of ['click', 'mouseover', 'dblclick']) document.querySelectorAll('p').forEach(p => "
+        "p.dispatchEvent(new MouseEvent(k)));</script>\n")
+run("api 3: several handlers of a tag, unquoted, numeric references", {}, {"index.html": many}, "PASS")
+run("api 3: a handler with &nbsp; fails with the references PecoFence decodes",
+    {}, {"index.html": "<!doctype html><p onclick=\"a&nbsp;= 1\">x</p>\n"}, "PecoFence decodes only &amp;")
+
+# The port of page_csp.rs against its own unit case (crates/core/src/page_csp.rs, inline_scripts_and_handlers_are_found).
+import importlib.util
+spec = importlib.util.spec_from_file_location("web_check", TOOLS / "web-check.py")
+wc = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(wc)
+html = ("<!doctype html><html><head>\r\n<script>window.a = 1;\r\n</script>"
+        "<script src=\"app.js\" defer></script><SCRIPT type=module>b()</SCRIPT>"
+        "<!-- <script>commented()</script> --></head>"
+        "<body><button onclick=\"go(&quot;x&quot;) &amp;&amp; y()\" ONMOUSEOVER='z()'>b</button>"
+        "<img src=x onerror=boom()><p title=\"on\">t</p></body></html>")
+scripts, handlers = wc.inline_code(html)
+for case, ok in [("scripts as page_csp.rs finds them", scripts == ["window.a = 1;\n", "b()"]),
+                 ("handlers as page_csp.rs decodes them", [wc.decode(h) for h in handlers] == ['go("x") && y()', "z()", "boom()"]),
+                 ("a script without end takes the rest", wc.inline_code("<script>x = '</scr'")[0] == ["x = '</scr'"]),
+                 ("&nbsp; and &amp without ; are not decoded", wc.other_references(["a&nbsp;b", "c &amp d", "e &amp; f"]) == ["&amp", "&nbsp;"]),
+                 ("connect-src: internet names and IPv4 only", wc.csp(["api.github.com", "8.8.8.8", "nas", "192.168.1.20", "[fd00::1]"], 3)
+                  .count("https://") == 2 and "nas" not in wc.csp(["nas"], 3))]:
+    print(f"{'ok  ' if ok else 'FAIL'} {case}")
+    failed += not ok
 print("RESULT: FAIL" if failed else "RESULT: PASS")
 sys.exit(1 if failed else 0)

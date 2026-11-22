@@ -8,6 +8,7 @@ WARN lines do not fail the check; the review reads them.
 """
 import argparse
 import hashlib
+import ipaddress
 import json
 import math
 import pathlib
@@ -61,7 +62,8 @@ OTHER_SIZE, TOTAL_SIZE, MAX_FILES = 1 << 20, 5 << 20, 100
 SIZES3 = {**SIZES, "main.js": 512 << 10}
 OTHER_SIZE3, TOTAL_SIZE3, MAX_FILES3 = 5 << 20, 20 << 20, 500
 # Library files whose official SHA-256 is listed (L6): named in the review, not read, and free of
-# the text rules; adding one is a pull request that changes only libraries.json.
+# the line-length rule only; adding one is a pull request that changes only libraries.json, which
+# the owner merges.
 LIBRARIES = pathlib.Path(__file__).resolve().parent.parent / "libraries.json"
 WEB_EXT = {".html", ".js", ".css", ".json", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff2"}
 TEXT_EXT = {".html", ".js", ".css", ".json", ".svg", ".md"}
@@ -275,11 +277,41 @@ def folders(p):
     return int(f) if isinstance(f, bool) else FOLDERS.index(f) if f in FOLDERS else None
 
 
-# Interface 3's hosts besides names with a dot: an IPv4 address, an IPv6 address in brackets, a
-# name without a dot (nas, localhost). A private or loopback address goes by the rules of local.
-IPV4 = re.compile(r"((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)")
-IPV6 = re.compile(r"\[[0-9a-f:.]{2,45}\]")
+# Interface 3's hosts of network besides names with a dot, as PecoFence's valid_network_host takes
+# them: an IPv4 address as it writes it (no leading zeros), an IPv6 address in brackets in its short
+# lowercase form, a name without a dot (nas, localhost). links take names with a dot only.
 DOTLESS = re.compile(r"[a-z]([a-z0-9-]{0,61}[a-z0-9])?")
+LAN_V4 = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10")]
+LAN_V6 = [ipaddress.ip_network(n) for n in ("fd00::/8", "fe80::/10")]
+
+
+def canonical_ip(h):
+    """Whether `h` is an IPv4 address or a bracketed IPv6 address written as PecoFence writes it."""
+    try:
+        if h.startswith("[") and h.endswith("]"):
+            ip = ipaddress.IPv6Address(h[1:-1])
+            return h[1:-1] == (f"::ffff:{ip.ipv4_mapped}" if ip.ipv4_mapped else str(ip))
+        return str(ipaddress.IPv4Address(h)) == h
+    except ValueError:
+        return False
+
+
+def local_class(host):
+    """PecoFence's network_local_class: "loopback" (localhost, 127/8, ::1), "lan" (a private, link-local
+    or 100.64/10 address, fd00::/8, a name without a dot or under .local, .lan, .internal, .home.arpa),
+    or None for the internet."""
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+        ip = ip.ipv4_mapped or ip if ip.version == 6 else ip
+    except ValueError:
+        ip = None
+    if host == "localhost" or ip and ip.is_loopback:
+        return "loopback"
+    if ip:
+        # PecoFence's lan_ip, range by range (not Python's wider is_private: 198.18/15 stays out).
+        nets = LAN_V4 if ip.version == 4 else LAN_V6
+        return "lan" if any(ip in n for n in nets) else None
+    return "lan" if "." not in host or host.endswith((".local", ".lan", ".internal", ".home.arpa")) else None
 
 
 def check_hosts(hosts, field):
@@ -289,10 +321,13 @@ def check_hosts(hosts, field):
     for h in hosts:
         if HOST.fullmatch(h):
             continue
-        if IPV4.fullmatch(h) or IPV6.fullmatch(h) or DOTLESS.fullmatch(h):
+        if field == "network" and (canonical_ip(h) or DOTLESS.fullmatch(h)):
             needs3.append(f"the host {h} (an IP address or a name without a dot)")
+        elif field == "network":
+            fail(f"permissions.network: '{h}' is not a host name in lower case, an IP address as PecoFence writes it "
+                 "(192.168.1.20, [fd00::1]) or a name without a dot")
         else:
-            fail(f"permissions.{field}: '{h}' is not a host name in lower case, an IP address or a name without a dot")
+            fail(f"permissions.{field}: '{h}' is not a host name in lower case with a dot")
     if len(hosts) > 20 or len(set(hosts)) != len(hosts):
         fail(f"permissions.{field}: at most 20 hosts, each once")
     return hosts
@@ -318,7 +353,7 @@ def check_key(c):
 def check_api2(p, api, settings):
     """AGENTS.md 2: the fields of interface 2, as PecoFence reads them."""
     used = [k for k in API2 if p.get(k) not in (None, [], False, "none") and (k != "local" or local_ports(p) != set())]
-    if folders(p) == 2:
+    if (folders(p) or 0) >= 2:
         used.append("folders readwrite")
     kinds = [s.get("type") for s in settings if isinstance(s, dict)] if isinstance(settings, list) else []
     used += [f"{k} settings" for k in ("secret", "device") if k in kinds]
@@ -352,11 +387,12 @@ def check_api2(p, api, settings):
     if ports is None:
         fail("permissions.local is { loopback: [{ port, app }], lan: [{ port, app }] }: "
              "each port a number 1 to 65535 once in its list, app the program's name (1 to 40 characters)")
-    elif len(ports) > 4:
-        needs3.append("more than 4 local ports")
-    elif ports & {(c, port) for c in LOCAL for port in REFUSED_PORTS}:
-        fail(f"permissions.local: the ports {sorted(port for _, port in ports if port in REFUSED_PORTS)} are "
-             "debugging or administration ports PecoFence refuses")
+    else:
+        if len(ports) > 4:
+            needs3.append("more than 4 local ports")
+        if ports & {(c, port) for c in LOCAL for port in REFUSED_PORTS}:
+            fail(f"permissions.local: the ports {sorted(port for _, port in ports if port in REFUSED_PORTS)} are "
+                 "debugging or administration ports PecoFence refuses")
     if bool(ports and any(c == "lan" for c, _ in ports)) != ("device" in kinds):
         fail("permissions.local.lan and a setting of type device go together: the user types the device's address there")
 
@@ -521,7 +557,7 @@ def check_code(files, p, layer):
     ports = local_ports(p) or set()
     have = {"network": bool(network | ports), "read": clip in ("read", "readwrite"),
             "write": clip in ("write", "readwrite"), "system": bool(p.get("system")),
-            "folders": bool(folders(p)), "folderwrite": folders(p) == 2,
+            "folders": bool(folders(p)), "folderwrite": (folders(p) or 0) >= 2,
             "notify": bool(p.get("notify")), "links": bool(network | links),
             "launch": p.get("launch") is True, "media": p.get("media") in ("read", "control"),
             "control": p.get("media") == "control", "apps": bool(p.get("apps")), "drop": bool(p.get("drop")),
@@ -534,16 +570,15 @@ def check_code(files, p, layer):
         if ext not in CODE_EXT and ext != ".json" or rel == "plugin.json":
             continue
         # A library file of libraries.json (its official SHA-256): not read by the review and free
-        # of the text rules; what the plugin's own code does with it is checked there.
+        # of the line-length rule only; every other rule holds for it as for any file.
         library = known.get(hashlib.sha256(data).hexdigest())
         if library:
-            print(f"PASS: {rel} is {library} (libraries.json)")
-            continue
+            print(f"INFO: {rel} is {library} (libraries.json)")
         text = data.decode("utf-8-sig", errors="replace")
         lines = text.splitlines()
         if ext in CODE_EXT:
             long = [i + 1 for i, line in enumerate(lines) if len(line) > 1000]
-            if long:
+            if long and not library:
                 fail(f"{rel}:{long[0]} has a line of {len(lines[long[0] - 1])} characters: minified or generated code is not readable")
             web = (EXTERNAL if ext != ".js" else []) + WEB_CODE if layer == "web" else []
             for pattern, what in FORBIDDEN + web:
@@ -573,13 +608,22 @@ def check_code(files, p, layer):
                 line = text.count("\n", 0, mt.start()) + 1
                 fail(f"{rel}:{line} has a user name (@) in the address {mt.group(0)}: PecoFence refuses it (AGENTS.md 3.1)")
             authority = mt.group(1).split("@")[-1].lower()
-            host = authority.split(":")[0].rstrip(".")
+            # [fd00::1]:8080: the host is the brackets and what is in them.
+            host = authority[:authority.find("]") + 1] if authority.startswith("[") else authority.split(":")[0].rstrip(".")
             if "$" in host or "{" in host or host in NAMESPACE_HOSTS:
+                continue
+            port = re.match(r":(\d+)", authority[len(host):])
+            port = int(port[1]) if port else 443 if mt.group(0).lower().startswith(("https", "wss")) else 80
+            if host in network and local_class(host):
+                # A network host of this computer or the local network: PecoFence reaches it by the
+                # local rules (no proxy, only through pf.http), never on a refused port.
+                seen.add(host)
+                if port in REFUSED_PORTS:
+                    line = text.count("\n", 0, mt.start()) + 1
+                    fail(f"{rel}:{line} names port {port} of {host}, a debugging or administration port PecoFence refuses")
                 continue
             if LOOPBACK.fullmatch(host):
                 # This computer: only the ports of permissions.local.loopback (AGENTS.md 3.1).
-                port = re.match(r":(\d+)", authority[len(host):])
-                port = int(port[1]) if port else 443 if mt.group(0).lower().startswith(("https", "wss")) else 80
                 seen.add(("loopback", port))
                 if ("loopback", port) not in ports:
                     line = text.count("\n", 0, mt.start()) + 1

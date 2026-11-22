@@ -16,9 +16,9 @@ Needs: pip install playwright && playwright install chromium
 """
 import argparse
 import base64
-from html import unescape
 import collections
 import hashlib
+import ipaddress
 import json
 import pathlib
 import re
@@ -173,7 +173,7 @@ STUB = """
                () => ["playpause", "next", "previous"].includes(a) ? "" : `${a} is not playpause, next or previous`)), true) },
     apps: { running: () => call("apps.running", [], needApps, []), front: () => call("apps.front", [], needApps, null) },
     // Interface 3: the pointer at the middle of a 1920 x 1080 screen, a focused box with its caret.
-    pointer: () => call("pointer", [], needFlag("pointer"), { x: 960, y: 540, monitor: { left: 0, top: 0, right: 1920, bottom: 1080 } }),
+    pointer: () => call("pointer", [], needFlag("pointer"), { x: 960, y: 540, monitor: { x: 0, y: 0, width: 1920, height: 1080 } }),
     focus: () => call("focus", [], needFlag("focus"), { x: 400, y: 300, width: 300, height: 24 }),
     caret: () => call("caret", [], needFlag("focus"), { x: 420, y: 302, width: 1, height: 20 }),
     drop: { text: (i) => call("drop.text", [i], dropped(i), "dropped notes"), read: (i) => call("drop.read", [i], dropped(i), "ZHJvcHBlZCBub3Rlcw=="),
@@ -186,23 +186,138 @@ STUB = """
 """
 
 
+def inline_code(html):
+    """The inline scripts and handler attributes of an HTML file as PecoFence's page_csp.rs reads them
+    (inline_code): line breaks as \\n, comments skipped, every on...= attribute of every tag (quoted or
+    not), a <script> without src up to its </script (or the end)."""
+    html = html.replace("\r\n", "\n").replace("\r", "\n")
+    lower, scripts, handlers, at = html.lower(), [], [], 0
+    while (lt := html.find("<", at)) >= 0:
+        if html.startswith("<!--", lt):
+            close = html.find("-->", lt)
+            at = len(html) if close < 0 else close + 3
+            continue
+        name_len = len(re.match(r"[A-Za-z0-9]*", html[lt + 1:]).group(0))
+        if not name_len:
+            at = lt + 1
+            continue
+        attrs, at = attributes(html, lt + 1 + name_len)
+        handlers += [v for k, v in attrs if k.startswith("on") and len(k) > 2]
+        if lower[lt + 1:lt + 1 + name_len] == "script":
+            close = lower.find("</script", at)
+            close = len(html) if close < 0 else close
+            if not any(k == "src" for k, _ in attrs):
+                scripts.append(html[at:close])
+            at = close
+    return scripts, handlers
+
+
+def attributes(html, at):
+    """page_csp.rs's attributes: (name in lowercase, value as written) up to the tag's >, and the place after it."""
+    attrs, n = [], len(html)
+    while True:
+        while at < n and (html[at].isspace() and html[at].isascii() or html[at] == "/"):
+            at += 1
+        if at >= n or html[at] == ">":
+            return attrs, min(at + 1, n)
+        start = at
+        while at < n and not (html[at].isspace() and html[at].isascii()) and html[at] not in "=>/":
+            at += 1
+        key = html[start:at].lower()
+        while at < n and html[at].isspace() and html[at].isascii():
+            at += 1
+        value = ""
+        if at < n and html[at] == "=":
+            at += 1
+            while at < n and html[at].isspace() and html[at].isascii():
+                at += 1
+            if at < n and html[at] in "\"'":
+                close = html.find(html[at], at + 1)
+                close = n if close < 0 else close
+                value, at = html[at + 1:close], min(close + 1, n)
+            else:
+                start = at
+                while at < n and not (html[at].isspace() and html[at].isascii()) and html[at] != ">":
+                    at += 1
+                value = html[start:at]
+        attrs.append((key, value))
+
+
+# The character references page_csp.rs decodes in a handler (decode): these named ones and numeric ones.
+NAMED = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'"}
+
+
+def decode(value):
+    """page_csp.rs's decode: &amp; &lt; &gt; &quot; &apos; and &#N; &#xH; (the ; within 10 characters)."""
+    out, rest = [], value
+    while (amp := rest.find("&")) >= 0:
+        out.append(rest[:amp])
+        rest = rest[amp:]
+        semi = rest.find(";")
+        name = rest[1:semi] if 0 <= semi <= 10 else None
+        char = None
+        if name in NAMED:
+            char = NAMED[name]
+        elif name and name[:2] in ("#x", "#X"):
+            try:
+                char = chr(int(name[2:], 16))
+            except (ValueError, OverflowError):
+                char = None
+        elif name and name.startswith("#") and name[1:].isdigit():
+            try:
+                char = chr(int(name[1:]))
+            except (ValueError, OverflowError):
+                char = None
+        if char is not None:
+            out.append(char)
+            rest = rest[semi + 1:]
+        else:
+            out.append("&")
+            rest = rest[1:]
+    return "".join(out + [rest])
+
+
+def other_references(handlers):
+    """Character references in handlers that page_csp.rs leaves as written but the browser decodes,
+    so the hash PecoFence lists would not match: a named one other than NAMED, or one without ;."""
+    found = []
+    for h in handlers:
+        for m in re.finditer(r"&(#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*)(;?)", h):
+            if decode(m.group(0)) == m.group(0):
+                found.append(m.group(0))
+    return sorted(set(found))
+
+
 def inline_hashes(html):
     """The 'sha256-...' of each inline <script> and on...= attribute of a page, as PecoFence lists
     them in its CSP (interface 3): what the file holds runs, code a script makes later does not."""
-    # As the HTML parser hands them to the browser (and page_csp.rs does): \r\n and \r become \n,
-    # and an attribute's character references (&amp;, &quot;) are decoded before hashing.
-    html = html.replace("\r\n", "\n").replace("\r", "\n")
-    scripts = re.findall(r"(?is)<script\b(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script\s*>", html)
-    handlers = [unescape(a or b) for a, b in re.findall(r"""(?is)<[a-z][^>]*?\son[a-z]+\s*=\s*(?:"([^"]*)"|'([^']*)')""", html)]
+    scripts, handlers = inline_code(html)
     digest = lambda code: "'sha256-" + base64.b64encode(hashlib.sha256(code.encode()).digest()).decode() + "'"
-    return sorted({digest(c) for c in scripts + handlers})
+    return sorted({digest(c) for c in scripts + [decode(h) for h in handlers]})
+
+
+def page_reaches(host):
+    """PecoFence's page_reaches: a page itself reaches an internet name or IPv4 address of network;
+    this computer, the local network and IPv6 only through pf.http."""
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        ip = None
+    if host.startswith("[") or host == "localhost" or ip and ip.is_loopback:
+        return False
+    if ip:
+        return not any(ip in n for n in LAN_V4)
+    return "." in host and not host.endswith((".local", ".lan", ".internal", ".home.arpa"))
+
+
+LAN_V4 = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10")]
 
 
 def csp(network, api=1, html=""):
     """The header PecoFence sends with each file (crates/app/src/web_plugin.rs, Plugin::csp). With
     api 3 a page may have inline styles, data: and blob: pictures, fonts and media, and the inline
     scripts its own HTML holds (by their SHA-256)."""
-    connect = "".join(f" https://{h} wss://{h}" for h in network)
+    connect = "".join(f" https://{h} wss://{h}" for h in network if page_reaches(h))
     if api < 3:
         return f"default-src 'self'; connect-src 'self'{connect}; frame-src 'none'; form-action 'none'"
     scripts = " ".join(["'self'", "'unsafe-hashes'", *inline_hashes(html)])
@@ -245,6 +360,14 @@ def main():
     headers = {"Content-Security-Policy": csp(network, api), "X-Content-Type-Options": "nosniff"}
     requests, sockets, calls, refused, errors, blocked, missing = [], [], collections.Counter(), [], [], [], []
     failures, notes = [], []
+    # A handler whose character reference PecoFence leaves as written while the browser decodes it
+    # would hash differently in PecoFence and not run there.
+    for page in sorted(root.rglob("*.html")) if api >= 3 else []:
+        refs = other_references(inline_code(page.read_bytes().decode("utf-8-sig", errors="replace"))[1])
+        if refs:
+            failures.append(f"{page.relative_to(root).as_posix()}: a handler attribute uses {', '.join(refs)}: PecoFence decodes "
+                            "only &amp; &lt; &gt; &quot; &apos; and numeric references such as &#38; and &#x26; (each ending "
+                            "in ;), so write the character itself or one of these")
 
     def serve(route):
         url = urllib.parse.urlsplit(route.request.url)

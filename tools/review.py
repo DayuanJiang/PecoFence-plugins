@@ -129,7 +129,8 @@ def listed_libraries(ref="main"):
 
 def review_libraries(pr):
     """A pull request that changes only libraries.json: each new entry's file is fetched from its
-    official address and its SHA-256 compared; all match: approved (GitHub then merges it)."""
+    official address and its SHA-256 compared. The result is a comment for the owner, who merges it
+    by hand (nothing is approved); a mismatch requests changes."""
     head, base = pr["head"]["sha"], pr["base"]["sha"]
     if not static_passed(head):
         print("The static check did not pass: no automatic review.")
@@ -157,8 +158,8 @@ def review_libraries(pr):
     if problems:
         post_review(head, "REQUEST_CHANGES", "**Automatic review of libraries.json**\n\n" + "\n".join(f"- {x}" for x in problems))
     else:
-        post_review(head, "APPROVE", "**Automatic review of libraries.json**\n\nEach new file matches its official "
-                    f"address: {', '.join(added) or 'nothing new'}.")
+        post_review(head, "COMMENT", "**Automatic check of libraries.json**\n\nEach new file matches its official "
+                    f"address: {', '.join(added) or 'nothing new'}. The owner merges a change to libraries.json.")
     return 0
 
 

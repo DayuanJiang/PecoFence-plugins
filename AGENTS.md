@@ -85,8 +85,8 @@ plugin costs about 100 KB of memory, a web plugin 20 to 70 MB.
 
   | Field | Meaning |
   |---|---|
-  | `network` | host names `pf.http` may reach, and a web page may connect to (`"api.github.com"`). Interface 3 also an IPv4 address, an IPv6 address in brackets (`"[fd00::20]"`) and a name without a dot (`"nas"`, `"localhost"`): a request to an address of this computer or of the local network goes by the rules of `local` (never through a proxy, plain `http` too, only through `pf.http`; a page's own `fetch` cannot reach it), a public address as any host. The ports of `local`'s list below are refused for every request |
-  | `links` | more host names `pf.open` may open in the browser (hosts in `network` may be opened too) |
+  | `network` | host names `pf.http` may reach, and a web page may connect to (`"api.github.com"`). Interface 3 also an IPv4 address as written without leading zeros (`"192.168.1.20"`), an IPv6 address in brackets in its short lowercase form (`"[fd00::20]"`) and a name without a dot (`"nas"`, `"localhost"`): a request to this computer (`localhost`, 127.x, `[::1]`) or the local network (a private, link-local or 100.64.x address, `fd00::/8`, a name without a dot or under `.local`, `.lan`, `.internal`, `.home.arpa`) goes by the rules of `local` (never through a proxy, plain `http` too, only through `pf.http`; a page's own `fetch` cannot reach it, nor any IPv6 address), a public address as any host. The ports of `local`'s list below are refused for every request |
+  | `links` | more host names `pf.open` may open in the browser, names with a dot only (hosts in `network` may be opened too) |
   | `clipboard` | `none`, `write` (only puts things on the clipboard, such as a copied IP address), `read`, or `readwrite` |
   | `background` | `true` keeps the plugin running while its fence is hidden (a clipboard history needs it) |
   | `system` | programs `pf.run` may start, each ending in `.exe` (interface 3 also `.bat`, `.cmd` and `.ps1`, and more than 20): a full path (`C:\Tools\tool.exe`, no empty part and no `..`), or the name of a program in `C:\Windows\System32` (`ipconfig.exe`). Works only when the user turns on 允许插件使用 Windows 底层功能, and every update asks the user again. `pf.run` refuses a program that came from the internet (the Mark of the Web) and one inside a folder the user picked or the plugin's data folder: a plugin cannot write a program and run it |
@@ -214,7 +214,7 @@ thread:
 | `pf.apps.front()` | `apps` | the program of `apps` whose window is in front, as written there, or `null` |
 | `pf.drop.text(i)` | `drop` `files` | the text (UTF-8) of file `i` of the fence's last drop with files (a drop of only text or a link keeps it; it is gone 5 minutes after the drop); at most 1 MB, a larger file rejects (use `pf.drop.save`), so does a file with a NUL or not in UTF-8 (`not a text file; use pf.drop.read`) |
 | `pf.drop.read(i)` | the same | the bytes of that file in standard base64; at most 1 MB |
-| `pf.pointer()` | `pointer` | `{ x, y, monitor }`: the pointer in screen pixels, and the rectangle `{ left, top, right, bottom }` of the monitor it is on |
+| `pf.pointer()` | `pointer` | `{ x, y, monitor }`: the pointer in screen pixels, and the rectangle `{ x, y, width, height }` of the monitor it is on |
 | `pf.focus()` | `focus` | `{ x, y, width, height }` of the element that has the keyboard focus, in screen pixels, or `null` |
 | `pf.caret()` | `focus` | the text caret's rectangle `{ x, y, width, height }`, or `null` when there is none |
 | `pf.drop.save(i, name)` | the same; `name` a data name | `null`: PecoFence copies the file into the data files as `name` (at most 20 MB), never through the plugin's memory |
@@ -471,7 +471,10 @@ plugin past a limit is stopped: the fence shows why and a 重新启动 button. I
   `data:` and `blob:` pictures, fonts and media, and each inline `<script>` and `on...=` attribute
   of the plugin's own HTML files by its SHA-256 (`script-src 'self' 'unsafe-hashes' 'sha256-...'`,
   worked out when PecoFence serves the file): what the file holds runs, a script a page builds
-  later from text does not. A CSP the plugin writes itself does not count. The web check (section 8)
+  later from text does not. In a handler attribute write characters as they are or as `&amp;`
+  `&lt;` `&gt;` `&quot;` `&apos;` or numeric references (`&#39;`, `&#x26;`), each ending in `;`:
+  PecoFence hashes the handler with only these decoded, so a handler with another reference
+  (`&nbsp;`) does not run, and the web check fails it. A CSP the plugin writes itself does not count. The web check (section 8)
   serves the page with this header and fails what it blocks.
 - Each file comes with the type of its extension and `X-Content-Type-Options: nosniff`, so a
   script runs only from a `.js` file. A path is taken as written: nothing in it is decoded, so a
@@ -641,9 +644,10 @@ you watch, point to the manifest entry that allows it.
 - A library (Chart.js, Day.js, marked, ...) goes into `libraries.json` with a pull request that
   changes only that file: `{ "name", "version", "url", "sha256" }`, the address a `.js` file of an
   npm package on `cdn.jsdelivr.net/npm/` or `unpkg.com/`, or of a project's release on GitHub, and
-  that file's SHA-256. The review fetches each new address and compares the hash; when all match,
-  the pull request is merged. A plugin then includes the file byte for byte (any name): the
-  checks and the review name it and do not read it.
+  that file's SHA-256. The automatic check fetches each new address and compares the hash; the
+  owner then merges the pull request by hand (it is not merged automatically). A plugin then
+  includes the file byte for byte (any name): the review names it and does not read it, and of
+  the static checks only the line-length rule does not apply to it.
 - Do not mention the maintainer: nobody reads the pull request unless something is wrong.
 
 ## 10. Reports and removal

@@ -1,5 +1,5 @@
 {
- "note": "Library files plugins may include as they are published: each with its official address and the SHA-256 of that file. A plugin file with one of these hashes is named in the review, not read, and free of the text rules (AGENTS.md section 9). Add a library with a pull request that changes only this file; the review fetches the address and compares the hash.",
+ "note": "Library files plugins may include as they are published: each with its official address and the SHA-256 of that file. A plugin file with one of these hashes is named in the review, not read, and free of the line-length rule only (AGENTS.md section 9). Add a library with a pull request that changes only this file; the automatic check fetches the address and compares the hash, and the owner merges it.",
  "libraries": [
   {
    "name": "chart.js",

@@ -70,6 +70,23 @@ check("WebRTC with webrtc", with_(3, "0.6.0", layer="web", webrtc=True), "PASS",
 check("WebRTC without it", with_(3, "0.6.0", layer="web"), "WebRTC",
       {"index.html": "<!doctype html><script src='a.js'></script>\n", "a.js": "const c = new RTCPeerConnection();\n"})
 
+# Parity with PecoFence (review 2026-11-22).
+check("folders any passes the write checks", with_(3, "0.6.0", folders="any"), "PASS",
+      {"main.js": "pf.folder.write('C:\\\\x\\\\a.bin', 'x').catch(() => {});\n"})
+check("links take names with a dot only", with_(3, "0.6.0", links=["nas"]), "with a dot")
+check("an IPv4 address as PecoFence writes it", with_(3, "0.6.0", network=["192.168.01.20"]), "as PecoFence writes it",
+      readme="192.168.01.20")
+check("an IPv6 address in its short lowercase form", with_(3, "0.6.0", network=["[FD00::1]"]), "as PecoFence writes it",
+      readme="[FD00::1]")
+check("a bracketed IPv6 host", with_(3, "0.6.0", network=["[fd00::1]"]), "PASS",
+      {"main.js": "pf.http.get('http://[fd00::1]:8080/x').catch(() => {});\n"}, readme="Sends to [fd00::1].")
+check("a refused port among more than 4", with_(3, "0.6.0", local={"loopback": [{"port": p, "app": f"App{p}"}
+      for p in (8001, 8002, 8003, 8004, 9222)]}), "PecoFence refuses", readme="App8001 App8002 App8003 App8004 App9222")
+check("a refused port of a local network host", with_(3, "0.6.0", network=["nas"]), "debugging or administration port",
+      {"main.js": "pf.http.get('http://nas:5985/x').catch(() => {});\n"}, readme="Sends to nas.")
+check("a local network host of network on its own port", with_(3, "0.6.0", network=["nas"]), "PASS",
+      {"main.js": "pf.http.get('http://nas:8123/x').catch(() => {});\n"}, readme="Sends to nas.")
+
 # build-index: an entry PecoFence 0.5.0 refuses gets a stand-in in index.json, the whole one in index-3.json.
 import importlib.util
 spec = importlib.util.spec_from_file_location("build_index", TOOLS / "build-index.py")
@@ -84,6 +101,7 @@ cases = [("0.5.0 refuses the whole entry", bi.refused_by_0_5(whole) is not None)
          ("the stand-in passes 0.5.0", bi.refused_by_0_5(stand) is None),
          ("the stand-in keeps the take-down", stand.get("disabled") == "a test take-down"),
          ("the stand-in says api 3", stand["api"] == 3),
+         ("the stand-in is marked standIn", stand.get("standIn") is True and "standIn" not in whole),
          ("the stand-in keeps the hosts 0.5.0 reads", stand["permissions"]["network"] == ["api.example.com"]),
          ("a plain entry is itself", bi.for_0_5(with_(1) | {"files": whole["files"][1:] + [
              {"name": "main.js", "size": 100, "sha256": "a" * 64}]})["api"] == 1)]

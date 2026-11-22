@@ -70,6 +70,9 @@ def for_0_5(e):
         return e
     s = json.loads(json.dumps(e))
     s["api"] = max(3, s.get("api", 1))
+    # 0.5.0 ignores the field; a newer PecoFence that reads index.json (no index-3.json reached)
+    # takes only the take-down from a stand-in and never installs or updates from it.
+    s["standIn"] = True
     p = s.setdefault("permissions", {})
     if p.get("folders") == "any":
         p["folders"] = "readwrite"
