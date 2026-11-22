@@ -1,0 +1,119 @@
+{
+  "id": "recipes",
+  "version": "1.0.0",
+  "api": 3,
+  "layer": "light",
+  "name": {
+    "en": "Recipes", "zh-CN": "菜谱", "zh-TW": "食譜", "ja": "レシピ", "ko": "레시피", "de": "Rezepte",
+    "fr": "Recettes", "es": "Recetas", "pt-BR": "Receitas", "ru": "Рецепты", "it": "Ricette"
+  },
+  "description": {
+    "en": "A meal idea with its photo, ingredients and steps, from free recipe services. A service is asked only for a new idea: once a day by default (or each hour, or never on its own) and when you click Another idea. If one has nothing new, the next one gives the idea.",
+    "zh-CN": "来自免费菜谱服务的菜品创意，附照片、食材和步骤。只有在需要新创意时才会联系某个服务：默认每天一次（也可每小时一次，或从不自动），以及你点「换一个」时。一个来源没有新内容时，自动换下一个。",
+    "ja": "無料のレシピサービスから、写真・材料・手順つきの献立アイデアを表示します。サービスに問い合わせるのは新しいアイデアが必要なときだけです。既定では1日1回（1時間ごと、自動なしも選べます）と、「別のアイデア」を押したとき。新しいものがなければ次の取得元に切り替えます。",
+    "de": "Eine Gericht-Idee mit Foto, Zutaten und Schritten aus kostenlosen Rezeptdiensten. Ein Dienst wird nur für eine neue Idee gefragt: standardmäßig einmal am Tag (oder stündlich, oder nie von selbst) und bei Klick auf „Noch eine Idee“. Hat einer nichts Neues, liefert der nächste.",
+    "fr": "Une idée de repas avec photo, ingrédients et étapes, depuis des services de recettes gratuits. Un service n'est contacté que pour une nouvelle idée : une fois par jour par défaut (ou chaque heure, ou jamais seul) et à votre clic sur Une autre idée. Sans nouveauté, le suivant prend le relais.",
+    "es": "Una idea de comida con foto, ingredientes y pasos, de servicios de recetas gratuitos. Solo se consulta un servicio para una idea nueva: una vez al día por defecto (o cada hora, o nunca por sí solo) y al hacer clic en «Otra idea». Si uno no tiene nada nuevo, el siguiente da la idea.",
+    "pt-BR": "Uma ideia de refeição com foto, ingredientes e passos, de serviços de receitas gratuitos. Um serviço só é consultado para uma ideia nova: uma vez por dia por padrão (ou a cada hora, ou nunca sozinho) e quando você clica em «Outra ideia». Se um não tem nada novo, o próximo assume.",
+    "it": "Un'idea per il pasto con foto, ingredienti e passaggi, da servizi di ricette gratuiti. Un servizio viene interpellato solo per una nuova idea: una volta al giorno per impostazione predefinita (o ogni ora, o mai da solo) e quando clicchi su «Un'altra idea». Se uno non ha novità, passa al successivo."
+  },
+  "author": "xan2622",
+  "minPecoFence": "0.5.0",
+  "permissions": {
+    "network": [
+      "www.themealdb.com", "dummyjson.com", "cdn.dummyjson.com", "en.wikibooks.org", "thumb.wikimedia.org",
+      "forkify-api.jonas.io", "forkify-api.herokuapp.com", "api.spoonacular.com", "img.spoonacular.com",
+      "recipe-api.com", "tasty.p.rapidapi.com", "img.buzzfeed.com"
+    ],
+    "links": [
+      "spoonacular.com", "tasty.co", "allrecipes.com", "www.bbcgoodfood.com", "thepioneerwoman.com",
+      "www.closetcooking.com", "www.realsimple.com", "www.twopeasandtheirpod.com", "www.epicurious.com",
+      "www.simplyrecipes.com", "www.bonappetit.com", "www.101cookbooks.com", "www.chow.com", "www.jamieoliver.com",
+      "www.bbc.co.uk", "smittenkitchen.com", "www.mybakingaddiction.com", "whatsgabycooking.com", "naturallyella.com",
+      "tastykitchen.com"
+    ]
+  },
+  "settings": [
+    {
+      "key": "source",
+      "type": "choice",
+      "label": {
+        "en": "Source", "zh-CN": "来源", "ja": "取得元", "de": "Quelle", "fr": "Source", "es": "Fuente",
+        "pt-BR": "Fonte", "it": "Fonte"
+      },
+      "default": "auto",
+      "options": [
+        { "value": "auto", "label": { "en": "Automatic (next one when a source has nothing new)", "zh-CN": "自动（来源没有新内容时换下一个）", "ja": "自動（新しいものがなければ次へ）", "de": "Automatisch (nächste Quelle, wenn eine nichts Neues hat)", "fr": "Automatique (la suivante quand une source n'a rien de neuf)", "es": "Automática (la siguiente si una no tiene nada nuevo)", "pt-BR": "Automática (a próxima quando uma não tem novidade)", "it": "Automatica (la successiva se una non ha novità)" } },
+        { "value": "mealdb", "label": { "en": "TheMealDB" } },
+        { "value": "dummyjson", "label": { "en": "DummyJSON" } },
+        { "value": "wikibooks", "label": { "en": "Wikibooks Cookbook" } },
+        { "value": "forkify", "label": { "en": "Forkify" } },
+        { "value": "spoonacular", "label": { "en": "Spoonacular (needs your own free key)", "zh-CN": "Spoonacular（需要你自己的免费密钥）", "ja": "Spoonacular（自分の無料キーが必要）", "de": "Spoonacular (braucht Ihren eigenen kostenlosen Schlüssel)", "fr": "Spoonacular (nécessite votre propre clé gratuite)", "es": "Spoonacular (necesita su propia clave gratuita)", "pt-BR": "Spoonacular (precisa da sua própria chave gratuita)", "it": "Spoonacular (serve la tua chiave gratuita)" } },
+        { "value": "recipeapi", "label": { "en": "Recipe API (needs your own free key)", "zh-CN": "Recipe API（需要你自己的免费密钥）", "ja": "Recipe API（自分の無料キーが必要）", "de": "Recipe API (braucht Ihren eigenen kostenlosen Schlüssel)", "fr": "Recipe API (nécessite votre propre clé gratuite)", "es": "Recipe API (necesita su propia clave gratuita)", "pt-BR": "Recipe API (precisa da sua própria chave gratuita)", "it": "Recipe API (serve la tua chiave gratuita)" } },
+        { "value": "tasty", "label": { "en": "Tasty (needs your own free key)", "zh-CN": "Tasty（需要你自己的免费密钥）", "ja": "Tasty（自分の無料キーが必要）", "de": "Tasty (braucht Ihren eigenen kostenlosen Schlüssel)", "fr": "Tasty (nécessite votre propre clé gratuite)", "es": "Tasty (necesita su propia clave gratuita)", "pt-BR": "Tasty (precisa da sua própria chave gratuita)", "it": "Tasty (serve la tua chiave gratuita)" } }
+      ]
+    },
+    {
+      "key": "refresh",
+      "type": "choice",
+      "label": {
+        "en": "New idea", "zh-CN": "更换创意", "ja": "アイデアの更新", "de": "Neue Idee", "fr": "Nouvelle idée",
+        "es": "Idea nueva", "pt-BR": "Nova ideia", "it": "Nuova idea"
+      },
+      "default": "daily",
+      "options": [
+        { "value": "manual", "label": { "en": "Only when I click", "zh-CN": "只在我点击时", "ja": "クリックしたときだけ", "de": "Nur bei Klick", "fr": "Seulement quand je clique", "es": "Solo al hacer clic", "pt-BR": "Só quando eu clicar", "it": "Solo al clic" } },
+        { "value": "daily", "label": { "en": "Every day", "zh-CN": "每天", "ja": "毎日", "de": "Jeden Tag", "fr": "Chaque jour", "es": "Cada día", "pt-BR": "Todos os dias", "it": "Ogni giorno" } },
+        { "value": "hourly", "label": { "en": "Every hour", "zh-CN": "每小时", "ja": "1 時間ごと", "de": "Jede Stunde", "fr": "Chaque heure", "es": "Cada hora", "pt-BR": "A cada hora", "it": "Ogni ora" } }
+      ]
+    },
+    {
+      "key": "excluded",
+      "type": "text",
+      "label": {
+        "en": "Ingredients to avoid (English, commas; no guarantee)",
+        "zh-CN": "要避开的食材（逗号分隔，用英文；仅供参考，不作保证）",
+        "ja": "避ける食材（カンマ区切り、英語で。目安であり保証ではありません）",
+        "de": "Zu meidende Zutaten (Englisch, Kommas; ohne Garantie)",
+        "fr": "Ingrédients à éviter (anglais, virgules ; sans garantie)",
+        "es": "Ingredientes a evitar (inglés, comas; sin garantía)",
+        "pt-BR": "Ingredientes a evitar (inglês, vírgulas; sem garantia)",
+        "it": "Ingredienti da evitare (inglese, virgole; senza garanzia)"
+      },
+      "default": ""
+    },
+    {
+      "key": "spoonacularKey",
+      "type": "secret",
+      "label": {
+        "en": "Spoonacular key (optional, free plan)", "zh-CN": "Spoonacular 密钥（可选，免费套餐）",
+        "ja": "Spoonacular のキー（任意、無料プラン）", "de": "Spoonacular-Schlüssel (optional, Gratis-Tarif)",
+        "fr": "Clé Spoonacular (facultative, offre gratuite)", "es": "Clave de Spoonacular (opcional, plan gratuito)",
+        "pt-BR": "Chave do Spoonacular (opcional, plano gratuito)", "it": "Chiave Spoonacular (facoltativa, piano gratuito)"
+      }
+    },
+    {
+      "key": "recipeApiKey",
+      "type": "secret",
+      "label": {
+        "en": "Recipe API key (optional, free plan)", "zh-CN": "Recipe API 密钥（可选，免费套餐）", "ja": "Recipe API のキー（任意、無料プラン）", "de": "Recipe API-Schlüssel (optional, Gratis-Tarif)", "fr": "Clé Recipe API (facultative, offre gratuite)", "es": "Clave de Recipe API (opcional, plan gratuito)", "pt-BR": "Chave do Recipe API (opcional, plano gratuito)", "it": "Chiave Recipe API (facoltativa, piano gratuito)"
+      }
+    },
+    {
+      "key": "tastyKey",
+      "type": "secret",
+      "label": {
+        "en": "Tasty (RapidAPI) key (optional, free plan)", "zh-CN": "Tasty (RapidAPI) 密钥（可选，免费套餐）", "ja": "Tasty (RapidAPI) のキー（任意、無料プラン）", "de": "Tasty (RapidAPI)-Schlüssel (optional, Gratis-Tarif)", "fr": "Clé Tasty (RapidAPI) (facultative, offre gratuite)", "es": "Clave de Tasty (RapidAPI) (opcional, plan gratuito)", "pt-BR": "Chave do Tasty (RapidAPI) (opcional, plano gratuito)", "it": "Chiave Tasty (RapidAPI) (facoltativa, piano gratuito)"
+      }
+    },
+    {
+      "key": "photo",
+      "type": "switch",
+      "label": {
+        "en": "Show the photo", "zh-CN": "显示照片", "ja": "写真を表示", "de": "Foto anzeigen", "fr": "Afficher la photo",
+        "es": "Mostrar la foto", "pt-BR": "Mostrar a foto", "it": "Mostra la foto"
+      },
+      "default": true
+    }
+  ]
+}
