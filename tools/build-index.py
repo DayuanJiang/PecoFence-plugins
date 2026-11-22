@@ -2,7 +2,7 @@
 """Builds the feed PecoFence reads: index-3.json and index.json, their signatures, and the plugins' files.
 
 index-3.json lists every plugin with its manifest and, for each file, its size and SHA-256; PecoFence
-0.6.0 and later read it. index.json is the same for PecoFence 0.5.0 and earlier, which drop an entry
+0.5.1 and later read it. index.json is the same for PecoFence 0.5.0 and earlier, which drop an entry
 their own checks refuse (what plugin interface 3 brought: folders "any", IP or dotless hosts, scripts
 in system, more than 4 local ports, bigger files) and then never see its take-down: such an entry is
 there as a stand-in they accept, with api 3 (so they show 需要更新 PecoFence), the permissions they
@@ -31,7 +31,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-# The most bytes PecoFence reads: of index.json in 0.5.0 and earlier, of index-3.json from 0.6.0
+# The most bytes PecoFence reads: of index.json in 0.5.0 and earlier, of index-3.json from 0.5.1
 # (MAX_INDEX in PecoFence's crates/core/src/plugins.rs).
 MAX_INDEX_0_5 = 1024 * 1024
 MAX_INDEX = 16 * 1024 * 1024

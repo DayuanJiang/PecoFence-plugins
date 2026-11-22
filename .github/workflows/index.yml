@@ -1,4 +1,4 @@
-# Publishes the feed PecoFence reads on the branch "index": index-3.json (PecoFence 0.6.0 and later),
+# Publishes the feed PecoFence reads on the branch "index": index-3.json (PecoFence 0.5.1 and later),
 # index.json (0.5.0 and earlier), their Ed25519 signatures (private key in the secret
 # INDEX_SIGNING_KEY) and <commit>/plugins/<id>/<files>,
 # the layout the project website copies for PecoFence's third address. A merge made by the

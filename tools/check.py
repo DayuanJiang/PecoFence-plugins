@@ -18,7 +18,7 @@ import sys
 
 API = 3
 # The first PecoFence that knows interface 3 (API3_RELEASE in PecoFence's plugins.rs).
-API3_RELEASE = "0.6.0"
+API3_RELEASE = "0.5.1"
 LANGS = {"en", "zh-CN", "zh-TW", "ja", "ko", "de", "fr", "es", "pt-BR", "ru", "it"}
 TOP_KEYS = {"id", "version", "api", "layer", "name", "description", "author", "minPecoFence",
             "permissions", "settings"}
@@ -57,7 +57,7 @@ LOOPBACK = re.compile(r"localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}")
 SETTING_TYPES = {"text", "number", "switch", "choice", "secret", "device"}
 SIZES = {"plugin.json": 64 << 10, "README.md": 64 << 10, "main.js": 200 << 10, "screenshot.png": 300 << 10}
 OTHER_SIZE, TOTAL_SIZE, MAX_FILES = 1 << 20, 5 << 20, 100
-# Interface 3's sizes (PecoFence's FILES, OTHER_SIZE, MAX_FILES, MAX_TOTAL from 0.6.0); the ones
+# Interface 3's sizes (PecoFence's FILES, OTHER_SIZE, MAX_FILES, MAX_TOTAL from 0.5.1); the ones
 # above are interface 2's, which PecoFence 0.5.0 keeps to.
 SIZES3 = {**SIZES, "main.js": 512 << 10}
 OTHER_SIZE3, TOTAL_SIZE3, MAX_FILES3 = 5 << 20, 20 << 20, 500
@@ -139,7 +139,7 @@ URL = re.compile(r"(?i)\b(?:https?|wss?)://([^\s/\"'`<>()\\?#]+)")
 BUILT_URL = re.compile(r"(?i)['\"`](?:https?|wss?)://['\"`]?\s*\+|`(?:https?|wss?)://\$\{")
 
 failures = 0
-# What the plugin uses that only interface 3 has: it then says api 3 and minPecoFence 0.6.0 or
+# What the plugin uses that only interface 3 has: it then says api 3 and minPecoFence 0.5.1 or
 # later (checked at the end, in main).
 needs3 = []
 
@@ -723,7 +723,7 @@ def main():
     check_code(files, p, layer)
     if failures == before:
         print("PASS: code rules")
-    # Interface 3: what PecoFence 0.5.0 drops or blocks needs api 3 and minPecoFence 0.6.0 or later.
+    # Interface 3: what PecoFence 0.5.0 drops or blocks needs api 3 and minPecoFence 0.5.1 or later.
     if needs3 and m.get("api") != 3:
         fail(f"{'; '.join(dict.fromkeys(needs3))}: need api 3")
     if m.get("api") == 3 and version_ok(m.get("minPecoFence")) and version(m["minPecoFence"]) < version(API3_RELEASE):
