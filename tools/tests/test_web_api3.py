@@ -75,7 +75,8 @@ scripts, handlers = wc.inline_code(html)
 for case, ok in [("scripts as page_csp.rs finds them", scripts == ["window.a = 1;\n", "b()"]),
                  ("handlers as page_csp.rs decodes them", [wc.decode(h) for h in handlers] == ['go("x") && y()', "z()", "boom()"]),
                  ("a script without end takes the rest", wc.inline_code("<script>x = '</scr'")[0] == ["x = '</scr'"]),
-                 ("&nbsp; and &amp without ; are not decoded", wc.other_references(["a&nbsp;b", "c &amp d", "e &amp; f"]) == ["&amp", "&nbsp;"]),
+                 ("only other named references are refused, as PecoFence does", wc.other_references(
+                     ["a&nbsp;b", "c &amp d", "e &amp; f &#38; &#x26;", "&copy;&lt;", "&nbsp;"]) == ["&copy;", "&nbsp;"]),
                  ("connect-src: internet names and IPv4 only", wc.csp(["api.github.com", "8.8.8.8", "nas", "192.168.1.20", "[fd00::1]"], 3)
                   .count("https://") == 2 and "nas" not in wc.csp(["nas"], 3))]:
     print(f"{'ok  ' if ok else 'FAIL'} {case}")

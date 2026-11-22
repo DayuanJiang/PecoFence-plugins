@@ -278,13 +278,14 @@ def decode(value):
 
 
 def other_references(handlers):
-    """Character references in handlers that page_csp.rs leaves as written but the browser decodes,
-    so the hash PecoFence lists would not match: a named one other than NAMED, or one without ;."""
+    """The named references in handlers that PecoFence refuses, as page_csp.rs foreign_references
+    finds them: a name of letters and digits right after & and ending in ;, other than NAMED."""
     found = []
     for h in handlers:
-        for m in re.finditer(r"&(#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*)(;?)", h):
-            if decode(m.group(0)) == m.group(0):
-                found.append(m.group(0))
+        for part in h.split("&")[1:]:
+            name = re.match(r"[A-Za-z0-9]*", part).group(0)
+            if name and part[len(name):].startswith(";") and name not in NAMED:
+                found.append(f"&{name};")
     return sorted(set(found))
 
 
