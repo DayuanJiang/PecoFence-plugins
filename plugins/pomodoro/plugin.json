@@ -1,0 +1,148 @@
+{
+  "id": "pomodoro",
+  "version": "1.0.0",
+  "api": 1,
+  "layer": "light",
+  "name": {
+    "en": "Pomodoro",
+    "zh-CN": "番茄钟",
+    "zh-TW": "番茄鐘",
+    "ja": "ポモドーロ",
+    "ko": "포모도로",
+    "de": "Pomodoro",
+    "fr": "Pomodoro",
+    "es": "Pomodoro",
+    "pt-BR": "Pomodoro",
+    "ru": "Помодоро",
+    "it": "Pomodoro"
+  },
+  "description": {
+    "en": "Focus and break timer with a live rolled-up title countdown, progress bar, daily focus count and end-of-session alerts.",
+    "zh-CN": "专注与休息计时器，支持收起标题栏倒计时、进度条、今日专注统计和结束提醒。",
+    "zh-TW": "專注與休息計時器，支援收合標題列倒數、進度條、今日專注統計與結束提醒。",
+    "ja": "集中と休憩のタイマー。折りたたんだタイトルバーのカウントダウン、進捗バー、今日の集中回数、終了通知に対応。",
+    "ko": "집중 및 휴식 타이머입니다. 접힌 제목 표시줄 카운트다운, 진행률 표시줄, 오늘 집중 횟수, 종료 알림을 지원합니다.",
+    "de": "Fokus- und Pausentimer mit Countdown in der eingeklappten Titelleiste, Fortschrittsbalken, Tageszähler und Benachrichtigung.",
+    "fr": "Minuteur de concentration et de pause avec compte à rebours dans le titre replié, barre de progression, compteur du jour et alerte.",
+    "es": "Temporizador de enfoque y descanso con cuenta atrás en el título plegado, barra de progreso, contador diario y aviso al terminar.",
+    "pt-BR": "Temporizador de foco e pausa com contagem na barra recolhida, barra de progresso, contador diário e aviso ao terminar.",
+    "ru": "Таймер фокуса и перерывов с отсчётом в свёрнутом заголовке, полосой прогресса, счётчиком за день и уведомлением.",
+    "it": "Timer di concentrazione e pausa con conto alla rovescia nel titolo arrotolato, barra di avanzamento, conteggio giornaliero e avviso."
+  },
+  "author": "snowyukitty",
+  "minPecoFence": "0.5.0",
+  "permissions": {
+    "background": true,
+    "notify": true
+  },
+  "settings": [
+    {
+      "key": "focusMinutes",
+      "type": "number",
+      "label": {
+        "en": "Focus duration (minutes)",
+        "zh-CN": "专注时长（分钟）",
+        "zh-TW": "專注時長（分鐘）",
+        "ja": "集中時間（分）",
+        "ko": "집중 시간(분)",
+        "de": "Fokusdauer (Minuten)",
+        "fr": "Durée de concentration (minutes)",
+        "es": "Duración de enfoque (minutos)",
+        "pt-BR": "Duração do foco (minutos)",
+        "ru": "Длительность фокуса (мин.)",
+        "it": "Durata concentrazione (minuti)"
+      },
+      "default": 25
+    },
+    {
+      "key": "shortBreakMinutes",
+      "type": "number",
+      "label": {
+        "en": "Short break (minutes)",
+        "zh-CN": "短休息（分钟）",
+        "zh-TW": "短休息（分鐘）",
+        "ja": "短い休憩（分）",
+        "ko": "짧은 휴식(분)",
+        "de": "Kurze Pause (Minuten)",
+        "fr": "Pause courte (minutes)",
+        "es": "Descanso corto (minutos)",
+        "pt-BR": "Pausa curta (minutos)",
+        "ru": "Короткий перерыв (мин.)",
+        "it": "Pausa breve (minuti)"
+      },
+      "default": 5
+    },
+    {
+      "key": "longBreakMinutes",
+      "type": "number",
+      "label": {
+        "en": "Long break (minutes)",
+        "zh-CN": "长休息（分钟）",
+        "zh-TW": "長休息（分鐘）",
+        "ja": "長い休憩（分）",
+        "ko": "긴 휴식(분)",
+        "de": "Lange Pause (Minuten)",
+        "fr": "Pause longue (minutes)",
+        "es": "Descanso largo (minutos)",
+        "pt-BR": "Pausa longa (minutos)",
+        "ru": "Длинный перерыв (мин.)",
+        "it": "Pausa lunga (minuti)"
+      },
+      "default": 15
+    },
+    {
+      "key": "cyclesBeforeLongBreak",
+      "type": "number",
+      "label": {
+        "en": "Focus sessions before long break",
+        "zh-CN": "长休息前的专注次数",
+        "zh-TW": "長休息前的專注次數",
+        "ja": "長い休憩までの集中回数",
+        "ko": "긴 휴식 전 집중 횟수",
+        "de": "Fokuseinheiten bis zur langen Pause",
+        "fr": "Sessions avant la pause longue",
+        "es": "Sesiones antes del descanso largo",
+        "pt-BR": "Sessões antes da pausa longa",
+        "ru": "Сессий до длинного перерыва",
+        "it": "Sessioni prima della pausa lunga"
+      },
+      "default": 4
+    },
+    {
+      "key": "autoStart",
+      "type": "switch",
+      "label": {
+        "en": "Start the next session automatically",
+        "zh-CN": "自动开始下一阶段",
+        "zh-TW": "自動開始下一階段",
+        "ja": "次のセッションを自動開始",
+        "ko": "다음 세션 자동 시작",
+        "de": "Nächste Phase automatisch starten",
+        "fr": "Démarrer la phase suivante automatiquement",
+        "es": "Iniciar la siguiente fase automáticamente",
+        "pt-BR": "Iniciar a próxima fase automaticamente",
+        "ru": "Автоматически запускать следующий этап",
+        "it": "Avvia automaticamente la fase successiva"
+      },
+      "default": false
+    },
+    {
+      "key": "sound",
+      "type": "switch",
+      "label": {
+        "en": "Play sound with notification",
+        "zh-CN": "提醒时播放提示音",
+        "zh-TW": "提醒時播放提示音",
+        "ja": "通知時に音を鳴らす",
+        "ko": "알림 시 소리 재생",
+        "de": "Ton bei Benachrichtigung abspielen",
+        "fr": "Jouer un son avec la notification",
+        "es": "Reproducir sonido con la notificación",
+        "pt-BR": "Tocar som na notificação",
+        "ru": "Воспроизводить звук уведомления",
+        "it": "Riproduci suono con la notifica"
+      },
+      "default": true
+    }
+  ]
+}
