@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Random Steam Game</title>
+  <link rel="stylesheet" href="card.css">
+  <script defer src="catalog.js"></script>
+  <script defer src="discovery.js"></script>
+  <script defer src="tags.js"></script>
+  <script defer src="browse.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main class="card">
+    <section class="gallery" aria-label="Game screenshots">
+      <figure>
+        <div class="gallery-placeholder" id="gallery-status" role="status"></div>
+      </figure>
+      <button class="slide-arrow previous" id="previous" type="button" aria-label="Previous frame" hidden>
+        <span class="button-icon" aria-hidden="true">
+          <img class="icon-default" src="assets/arrow.svg" alt="">
+          <img class="icon-hover" src="assets/arrow-hover.svg" alt="">
+        </span>
+      </button>
+      <button class="slide-arrow next" id="next" type="button" aria-label="Next frame" hidden>
+        <span class="button-icon" aria-hidden="true">
+          <img class="icon-default" src="assets/arrow.svg" alt="">
+          <img class="icon-hover" src="assets/arrow-hover.svg" alt="">
+        </span>
+      </button>
+      <div class="slide-progress" id="indicators" aria-label="Gallery frames"></div>
+    </section>
+    <div class="card-body">
+      <ul class="tags" aria-label="Genres"></ul>
+      <h1><a class="game-title"></a></h1>
+      <p class="description"></p>
+      <nav aria-label="Game links">
+        <a class="pill steamdb"><span>SteamDB statistics</span><span class="button-icon" aria-hidden="true">
+          <img src="assets/external.svg" alt="">
+        </span></a>
+        <button class="pill next-game" id="next-game" type="button" aria-label="Another game" title="Another game">🎲</button>
+      </nav>
+      <p class="steam-notice" role="status" hidden></p>
+    </div>
+  </main>
+</body>
+</html>
