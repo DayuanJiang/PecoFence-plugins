@@ -1,0 +1,35 @@
+{
+  "id": "tally",
+  "version": "1.0.0",
+  "api": 1,
+  "layer": "light",
+  "name": {
+    "en": "Tally",
+    "zh-CN": "计数器",
+    "zh-TW": "計數器",
+    "ja": "カウンター",
+    "ko": "카운터",
+    "de": "Zähler",
+    "fr": "Compteur",
+    "es": "Contador",
+    "pt-BR": "Contador",
+    "ru": "Счётчик",
+    "it": "Contatore"
+  },
+  "description": {
+    "en": "Named desktop counters with + and - buttons, mouse-wheel stepping, and a live total in the rolled-up title bar. Works offline with no permissions.",
+    "zh-CN": "桌面多组命名计数器，支持 + / - 按钮、滚轮增减，并在收起标题栏显示实时计数或总计。完全离线，无需任何权限。",
+    "zh-TW": "桌面多組命名計數器，支援 + / - 按鈕、滾輪增減，並在收合標題列顯示即時數值或總計。完全離線，無需任何權限。",
+    "ja": "名前付きデスクトップカウンター。+/- ボタンやマウスホイールで増減でき、折りたたんだタイトルバーに合計を表示します。オフライン動作、権限不要。",
+    "ko": "이름이 있는 바탕 화면 카운터입니다. +/- 버튼과 마우스 휠로 증감하며, 접힌 제목 표시줄에 합계를 표시합니다. 오프라인 작동, 권한 불필요.",
+    "de": "Benannte Desktop-Zähler mit +/- Tasten, Mausrad-Steuerung und Summe in der eingeklappten Titelleiste. Offline und ohne Berechtigungen.",
+    "fr": "Compteurs nommés sur le bureau avec boutons +/-, molette et total dans la barre de titre repliée. Hors ligne et sans autorisation.",
+    "es": "Contadores con nombre en el escritorio con botones +/-, rueda del ratón y total en la barra de título plegada. Sin conexión y sin permisos.",
+    "pt-BR": "Contadores nomeados na área de trabalho com botões +/-, rolagem do mouse e total na barra recolhida. Offline e sem permissões.",
+    "ru": "Именованные счётчики на рабочем столе с кнопками +/-, колесом мыши и итогом в свёрнутом заголовке. Офлайн и без разрешений.",
+    "it": "Contatori con nome sul desktop con pulsanti +/-, rotellina del mouse e totale nel titolo arrotolato. Offline e senza permessi."
+  },
+  "author": "snowyukitty",
+  "minPecoFence": "0.5.0",
+  "permissions": {}
+}
