@@ -347,9 +347,9 @@ function draw(force) {
           wheel: true,
           cells: [
             { text: it.name, fill: true, tip: it.name },
-            { id: it.k + ":dec", text: "\u2212", width: 28, align: "center", tip: t.dec },
+            { id: it.k + ":dec", text: "\u2212", width: 28, align: "center", tip: t.dec, wheel: true },
             { text: String(it.n), bold: true, width: 64, align: "right", tip: it.name + ": " + String(it.n) },
-            { id: it.k + ":inc", text: "+", width: 28, align: "center", tip: t.inc },
+            { id: it.k + ":inc", text: "+", width: 28, align: "center", tip: t.inc, wheel: true },
           ],
           menu: [
             { id: "reset", title: t.menuReset, disabled: it.n === 0 },
@@ -464,11 +464,12 @@ pf.on("wheel", (e) => {
   if (!loaded || !e || typeof e.id !== "string") return;
   const steps = Math.trunc(Number(e.steps));
   if (!Number.isFinite(steps) || steps === 0) return;
+  const wasRenaming = renaming !== null;
   renaming = null;
-  if (stepCounter(e.id, steps)) {
-    save();
-    draw(false);
-  }
+  // Over a button the host sends the cell ID instead of the counter row ID.
+  const changed = stepCounter(e.id.split(":", 1)[0], steps);
+  if (changed) save();
+  if (changed || wasRenaming) draw(false);
 });
 
 pf.on("text", (e) => {
@@ -477,7 +478,8 @@ pf.on("text", (e) => {
     renaming = null;
     const name = cleanName(e.text);
     if (!name) {
-      draw(false);
+      // The host puts the submitted text in the row before sending this event.
+      draw(e.text !== "");
       return;
     }
     if (addCounter(name)) {
