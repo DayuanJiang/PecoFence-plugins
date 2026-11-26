@@ -67,7 +67,7 @@ const T = {
   },
   de: {
     focus: "Fokus", short: "Kurze Pause", long: "Lange Pause",
-    start: "Start", pause: "Pause", resume: "Weiter", skip: "Weiter", reset: "Zurücksetzen",
+    start: "Start", pause: "Pause", resume: "Weiter", skip: "Überspringen", reset: "Zurücksetzen",
     paused: "Pausiert", round: "{0}/{1}", today: "Heute: {0} Fokus · {1} Min.",
     menuFocus: "Zu Fokus wechseln", menuShort: "Zu Kurzer Pause wechseln", menuLong: "Zu Langer Pause wechseln",
     menuResetToday: "Heutigen Zähler zurücksetzen",
@@ -193,6 +193,7 @@ let state = {
 let loaded = false;
 let hidden = false;
 let timer = 0;
+let idleMidnight = 0;
 let shown = "";
 let saveQueue = Promise.resolve();
 
@@ -253,6 +254,30 @@ function syncTimer() {
   }
 }
 
+function cancelIdleMidnight() {
+  if (!idleMidnight) return;
+  pf.cancel(idleMidnight);
+  idleMidnight = 0;
+}
+
+function syncIdleMidnight(now) {
+  // Running sessions check the date on each tick. A visible idle fence only needs
+  // one wake-up while there are daily totals to clear.
+  if (hidden || state.running || (state.todayCount === 0 && state.todayMinutes === 0)) {
+    cancelIdleMidnight();
+    return;
+  }
+  if (idleMidnight) return;
+
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  const delay = Math.max(1, Math.ceil((midnight.getTime() - now) / 1000));
+  idleMidnight = pf.after(delay, () => {
+    idleMidnight = 0;
+    draw(false);
+  });
+}
+
 function setPhase(phase, autoRun) {
   const c = cfg();
   const mins = phaseMinutes(phase, c);
@@ -273,15 +298,18 @@ function completePhase(now, notifyUser) {
   const c = cfg();
   syncToday(now);
   const finished = state.phase;
-  const overdue = typeof state.endAt === "number" ? now - state.endAt : 0;
+  const endedAt = state.endAt ?? now;
+  const overdue = now - endedAt;
   let nextPhase = "focus";
   let title = t.doneBreakTitle;
   let body = fill(t.doneBreakBody, c.focus);
 
   if (finished === "focus") {
-    const mins = Math.max(1, Math.round(state.totalMs / 60000));
-    state.todayCount += 1;
-    state.todayMinutes += mins;
+    if (dayKey(endedAt) === state.todayKey) {
+      const mins = Math.max(1, Math.round(state.totalMs / 60000));
+      state.todayCount += 1;
+      state.todayMinutes += mins;
+    }
     state.cycle += 1;
     if (state.cycle >= c.cycles) {
       state.cycle = 0;
@@ -308,6 +336,8 @@ function completePhase(now, notifyUser) {
 function draw(force) {
   if (!loaded) return;
   const now = pf.time.now();
+  if (syncToday(now)) save();
+  syncIdleMidnight(now);
   const c = cfg();
   const rem = currentRemaining(now);
   const total = Math.max(1000, state.totalMs);
@@ -430,9 +460,11 @@ pf.on("show", () => {
 });
 pf.on("hide", () => {
   hidden = true;
+  cancelIdleMidnight();
 });
 pf.on("timechange", () => {
   if (!loaded) return;
+  cancelIdleMidnight();
   const now = pf.time.now();
   const rolled = syncToday(now);
   if (state.running && currentRemaining(now) <= 0) {
@@ -466,7 +498,13 @@ pf.on("click", (e) => {
   syncToday(now);
   if (e.id === "toggle") {
     if (state.running) {
-      state.remainingMs = currentRemaining(now);
+      const remaining = currentRemaining(now);
+      if (remaining <= 0) {
+        completePhase(now, false);
+        draw(false);
+        return;
+      }
+      state.remainingMs = remaining;
       state.running = false;
       state.endAt = null;
       syncTimer();
@@ -514,6 +552,7 @@ pf.on("command", (c) => {
 });
 pf.on("stop", () => {
   if (!loaded) return;
+  cancelIdleMidnight();
   if (state.running) {
     state.remainingMs = currentRemaining(pf.time.now());
   }
