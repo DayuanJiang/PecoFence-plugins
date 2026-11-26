@@ -174,6 +174,15 @@ function dayKey(ms) {
   return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
 }
 
+function completedToday(endedAt, now) {
+  // A custom Windows date format can repeat its label across distant dates.
+  if (now - endedAt >= 48 * 60 * 60 * 1000) return false;
+  // On Windows, QuickJS Date uses the current DST offset even for earlier times.
+  const deadlineDate = pf.time.format(endedAt, "date");
+  const currentDate = pf.time.format(now, "date");
+  return deadlineDate && currentDate ? deadlineDate === currentDate : dayKey(endedAt) === dayKey(now);
+}
+
 // Per-fence data file (<fence-uuid>-pomodoro.json): travels with this fence and is cleaned up
 // automatically by PecoFence after the fence is deleted permanently.
 const stateFile = () => pf.fence.id + "-pomodoro.json";
@@ -305,7 +314,7 @@ function completePhase(now, notifyUser) {
   let body = fill(t.doneBreakBody, c.focus);
 
   if (finished === "focus") {
-    if (dayKey(endedAt) === state.todayKey) {
+    if (completedToday(endedAt, now)) {
       const mins = Math.max(1, Math.round(state.totalMs / 60000));
       state.todayCount += 1;
       state.todayMinutes += mins;
