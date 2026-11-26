@@ -193,6 +193,7 @@ let state = {
 let loaded = false;
 let hidden = false;
 let timer = 0;
+let idleMidnight = 0;
 let shown = "";
 let saveQueue = Promise.resolve();
 
@@ -253,6 +254,30 @@ function syncTimer() {
   }
 }
 
+function cancelIdleMidnight() {
+  if (!idleMidnight) return;
+  pf.cancel(idleMidnight);
+  idleMidnight = 0;
+}
+
+function syncIdleMidnight(now) {
+  // Running sessions check the date on each tick. A visible idle fence only needs
+  // one wake-up while there are daily totals to clear.
+  if (hidden || state.running || (state.todayCount === 0 && state.todayMinutes === 0)) {
+    cancelIdleMidnight();
+    return;
+  }
+  if (idleMidnight) return;
+
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  const delay = Math.max(1, Math.ceil((midnight.getTime() - now) / 1000));
+  idleMidnight = pf.after(delay, () => {
+    idleMidnight = 0;
+    draw(false);
+  });
+}
+
 function setPhase(phase, autoRun) {
   const c = cfg();
   const mins = phaseMinutes(phase, c);
@@ -308,6 +333,8 @@ function completePhase(now, notifyUser) {
 function draw(force) {
   if (!loaded) return;
   const now = pf.time.now();
+  if (syncToday(now)) save();
+  syncIdleMidnight(now);
   const c = cfg();
   const rem = currentRemaining(now);
   const total = Math.max(1000, state.totalMs);
@@ -430,9 +457,11 @@ pf.on("show", () => {
 });
 pf.on("hide", () => {
   hidden = true;
+  cancelIdleMidnight();
 });
 pf.on("timechange", () => {
   if (!loaded) return;
+  cancelIdleMidnight();
   const now = pf.time.now();
   const rolled = syncToday(now);
   if (state.running && currentRemaining(now) <= 0) {
@@ -514,6 +543,7 @@ pf.on("command", (c) => {
 });
 pf.on("stop", () => {
   if (!loaded) return;
+  cancelIdleMidnight();
   if (state.running) {
     state.remainingMs = currentRemaining(pf.time.now());
   }
