@@ -67,7 +67,7 @@ const T = {
   },
   de: {
     focus: "Fokus", short: "Kurze Pause", long: "Lange Pause",
-    start: "Start", pause: "Pause", resume: "Weiter", skip: "Weiter", reset: "Zurücksetzen",
+    start: "Start", pause: "Pause", resume: "Weiter", skip: "Überspringen", reset: "Zurücksetzen",
     paused: "Pausiert", round: "{0}/{1}", today: "Heute: {0} Fokus · {1} Min.",
     menuFocus: "Zu Fokus wechseln", menuShort: "Zu Kurzer Pause wechseln", menuLong: "Zu Langer Pause wechseln",
     menuResetToday: "Heutigen Zähler zurücksetzen",
@@ -298,15 +298,18 @@ function completePhase(now, notifyUser) {
   const c = cfg();
   syncToday(now);
   const finished = state.phase;
-  const overdue = typeof state.endAt === "number" ? now - state.endAt : 0;
+  const endedAt = state.endAt ?? now;
+  const overdue = now - endedAt;
   let nextPhase = "focus";
   let title = t.doneBreakTitle;
   let body = fill(t.doneBreakBody, c.focus);
 
   if (finished === "focus") {
-    const mins = Math.max(1, Math.round(state.totalMs / 60000));
-    state.todayCount += 1;
-    state.todayMinutes += mins;
+    if (dayKey(endedAt) === state.todayKey) {
+      const mins = Math.max(1, Math.round(state.totalMs / 60000));
+      state.todayCount += 1;
+      state.todayMinutes += mins;
+    }
     state.cycle += 1;
     if (state.cycle >= c.cycles) {
       state.cycle = 0;
@@ -495,7 +498,13 @@ pf.on("click", (e) => {
   syncToday(now);
   if (e.id === "toggle") {
     if (state.running) {
-      state.remainingMs = currentRemaining(now);
+      const remaining = currentRemaining(now);
+      if (remaining <= 0) {
+        completePhase(now, false);
+        draw(false);
+        return;
+      }
+      state.remainingMs = remaining;
       state.running = false;
       state.endAt = null;
       syncTimer();

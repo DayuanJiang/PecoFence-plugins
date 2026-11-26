@@ -10,6 +10,7 @@ the fence's right-click menu.
 - **Progress & daily count**: displays a phase progress bar and counts completed focus sessions and
   minutes for the current calendar day. A visible fence clears yesterday's totals at local
   midnight, including while idle or paused. A hidden fence catches up when shown again.
+  A session belongs to the local day on which its countdown reached zero.
 - **Per-fence settings**: customize focus length, short break, long break, sessions per long break,
   auto-start next phase, and notification sound in the fence menu under *Plugin settings*.
 
@@ -28,7 +29,7 @@ the fence's right-click menu.
 桌面上轻巧的专注与休息计时器。可随时开始、暂停、继续、跳过或重置，也可在栅栏右键菜单中直接切换专注、短休息与长休息。
 
 - **收起标题栏倒计时**：计时运行中或中途暂停时，收起栅栏后标题栏会显示剩余时间；空闲时恢复显示栅栏名称并停止倒计时。
-- **进度条与今日统计**：显示当前阶段进度条，并统计今日已完成的专注次数与分钟数。可见的栅栏即使空闲或暂停，也会在本地午夜清除昨日统计。隐藏的栅栏会在再次显示时更新。
+- **进度条与今日统计**：显示当前阶段进度条，并统计今日已完成的专注次数与分钟数。可见的栅栏即使空闲或暂停，也会在本地午夜清除昨日统计。隐藏的栅栏会在再次显示时更新。专注按倒计时归零时的本地日期统计。
 - **独立设置**：可在栅栏菜单的「插件设置」中调整专注时长、短休息、长休息、长休息前专注轮数、是否自动开始下一阶段及提醒提示音。
 
 ## 权限与隐私
