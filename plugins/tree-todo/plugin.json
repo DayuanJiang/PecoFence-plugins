@@ -1,0 +1,71 @@
+{
+  "id": "tree-todo",
+  "version": "1.0.0",
+  "api": 1,
+  "layer": "web",
+  "name": {
+    "en": "Tree To-do",
+    "zh-CN": "多层级待办",
+    "zh-TW": "多層級待辦"
+  },
+  "description": {
+    "en": "Minimal Kite-style multi-level to-do outline: bottom + bar, Enter to add below, Tab/Shift+Tab to nest/outdent, hover urgency tags, two-step delete, and pull unfinished to today. Offline.",
+    "zh-CN": "极简仿 Kite 手感的多层级待办：底部 + 新建、回车向下续加、Tab/Shift+Tab 升降层级、悬停紧急标签、二段对勾删除与一键未完成挪到今天。纯本地离线。",
+    "zh-TW": "極簡仿 Kite 手感的多層級待辦：底部 + 新增、Enter 向下續加、Tab/Shift+Tab 升降層級、懸停緊急標籤、二段對勾刪除與一鍵未完成挪到今天。純本地離線。"
+  },
+  "author": "MocheResume",
+  "minPecoFence": "0.5.0",
+  "permissions": {},
+  "settings": [
+    {
+      "key": "showWeekBar",
+      "type": "switch",
+      "label": {
+        "en": "Show weekly date strip",
+        "zh-CN": "显示顶部周日历条",
+        "zh-TW": "顯示頂部週日曆條"
+      },
+      "default": true
+    },
+    {
+      "key": "hideDone",
+      "type": "switch",
+      "label": {
+        "en": "Hide completed tasks",
+        "zh-CN": "隐藏已完成的事项",
+        "zh-TW": "隱藏已完成的事項"
+      },
+      "default": false
+    },
+    {
+      "key": "autoCompleteParent",
+      "type": "switch",
+      "label": {
+        "en": "Auto-complete parent when all subtasks are done",
+        "zh-CN": "子任务全部完成时自动勾选父任务",
+        "zh-TW": "子任務全部完成時自動勾選父任務"
+      },
+      "default": true
+    },
+    {
+      "key": "cascadeDone",
+      "type": "switch",
+      "label": {
+        "en": "Completing a parent completes its subtasks",
+        "zh-CN": "勾选父任务时同步完成所有子任务",
+        "zh-TW": "勾選父任務時同步完成所有子任務"
+      },
+      "default": true
+    },
+    {
+      "key": "compactMode",
+      "type": "switch",
+      "label": {
+        "en": "Compact row spacing",
+        "zh-CN": "紧凑行距模式",
+        "zh-TW": "緊湊行距模式"
+      },
+      "default": false
+    }
+  ]
+}
