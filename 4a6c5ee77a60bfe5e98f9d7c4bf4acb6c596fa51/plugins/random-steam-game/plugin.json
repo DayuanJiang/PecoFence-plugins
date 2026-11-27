@@ -1,0 +1,22 @@
+{
+  "id": "random-steam-game",
+  "version": "1.4.0",
+  "api": 3,
+  "layer": "web",
+  "author": "deaddeaf",
+  "minPecoFence": "0.5.1",
+  "name": {
+    "en": "Random Steam Game",
+    "ru": "Случайная игра в Steam"
+  },
+  "description": {
+    "en": "Discover a random game from the public Steam catalog every ten minutes. Browse screenshots and open its Steam or SteamDB page.",
+    "ru": "Случайная игра из публичного каталога Steam каждые десять минут. Галерея скриншотов и ссылки на Steam и SteamDB."
+  },
+  "permissions": {
+    "network": ["store.steampowered.com", "shared.akamai.steamstatic.com", "api.steampowered.com"],
+    "links": ["steamdb.info"],
+    "apps": ["steam.exe"],
+    "system": ["C:\\Program Files (x86)\\Steam\\steam.exe"]
+  }
+}

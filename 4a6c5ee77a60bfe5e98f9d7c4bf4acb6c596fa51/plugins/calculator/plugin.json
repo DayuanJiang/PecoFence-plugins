@@ -1,0 +1,109 @@
+{
+  "id": "calculator",
+  "version": "1.0.0",
+  "api": 1,
+  "layer": "light",
+  "name": {
+    "en": "Calculator",
+    "zh-CN": "计算器",
+    "zh-TW": "計算機",
+    "ja": "電卓",
+    "ko": "계산기",
+    "de": "Rechner",
+    "fr": "Calculatrice",
+    "es": "Calculadora",
+    "pt-BR": "Calculadora",
+    "ru": "Калькулятор",
+    "it": "Calcolatrice"
+  },
+  "description": {
+    "en": "Inline desktop expression calculator with safe math parsing, ans reuse, per-fence history, and one-click result copy. Offline.",
+    "zh-CN": "桌面行内算式计算器，支持安全数学解析、ans 续算、每栅栏历史记录和一键复制结果。完全离线。",
+    "zh-TW": "桌面行內算式計算機，支援安全數學解析、ans 續算、每柵欄歷史記錄與一鍵複製結果。完全離線。",
+    "ja": "安全な数式解析、ans 再利用、フェンス別履歴、ワンクリック結果コピーを備えたオフライン電卓。",
+    "ko": "안전한 수식 해석, ans 재사용, 펜스별 기록, 원클릭 결과 복사를 지원하는 오프라인 계산기입니다.",
+    "de": "Inline-Desktop-Rechner mit sicherem Formelparser, ans-Wiederverwendung, Verlauf pro Bereich und Kopieren per Klick. Offline.",
+    "fr": "Calculatrice d'expressions en ligne sur le bureau avec analyseur sûr, réutilisation de ans, historique par groupe et copie en un clic. Hors ligne.",
+    "es": "Calculadora de expresiones en el escritorio con analizador seguro, reutilización de ans, historial por grupo y copia en un clic. Sin conexión.",
+    "pt-BR": "Calculadora de expressões na área de trabalho com parser seguro, reutilização de ans, histórico por grupo e cópia em um clique. Offline.",
+    "ru": "Настольный калькулятор выражений с безопасным разбором, повторным использованием ans, историей для каждой области и копированием в один клик. Офлайн.",
+    "it": "Calcolatrice di espressioni sul desktop con parser sicuro, riutilizzo di ans, cronologia per riquadro e copia con un clic. Offline."
+  },
+  "author": "snowyukitty",
+  "minPecoFence": "0.5.0",
+  "permissions": {
+    "clipboard": "write"
+  },
+  "settings": [
+    {
+      "key": "angleUnit",
+      "type": "choice",
+      "label": {
+        "en": "Angle unit",
+        "zh-CN": "角度单位",
+        "zh-TW": "角度單位",
+        "ja": "角度の単位",
+        "ko": "각도 단위",
+        "de": "Winkeleinheit",
+        "fr": "Unité d'angle",
+        "es": "Unidad de ángulo",
+        "pt-BR": "Unidade de ângulo",
+        "ru": "Единица углов",
+        "it": "Unità angolare"
+      },
+      "options": [
+        {
+          "value": "deg",
+          "label": {
+            "en": "Degrees (DEG)",
+            "zh-CN": "角度（DEG）",
+            "zh-TW": "角度（DEG）",
+            "ja": "度 (DEG)",
+            "ko": "도 (DEG)",
+            "de": "Grad (DEG)",
+            "fr": "Degrés (DEG)",
+            "es": "Grados (DEG)",
+            "pt-BR": "Graus (DEG)",
+            "ru": "Градусы (DEG)",
+            "it": "Gradi (DEG)"
+          }
+        },
+        {
+          "value": "rad",
+          "label": {
+            "en": "Radians (RAD)",
+            "zh-CN": "弧度（RAD）",
+            "zh-TW": "弧度（RAD）",
+            "ja": "ラジアン (RAD)",
+            "ko": "라디안 (RAD)",
+            "de": "Radiant (RAD)",
+            "fr": "Radians (RAD)",
+            "es": "Radianes (RAD)",
+            "pt-BR": "Radianos (RAD)",
+            "ru": "Радианы (RAD)",
+            "it": "Radianti (RAD)"
+          }
+        }
+      ],
+      "default": "deg"
+    },
+    {
+      "key": "showCaption",
+      "type": "switch",
+      "label": {
+        "en": "Show last result when rolled up",
+        "zh-CN": "收起时显示上次结果",
+        "zh-TW": "收合時顯示上次結果",
+        "ja": "折りたたみ時に最後の結果を表示",
+        "ko": "접었을 때 마지막 결과 표시",
+        "de": "Letztes Ergebnis im eingeklappten Zustand anzeigen",
+        "fr": "Afficher le dernier résultat en position repliée",
+        "es": "Mostrar el último resultado al plegar",
+        "pt-BR": "Mostrar o último resultado ao recolher",
+        "ru": "Показывать последний результат в свёрнутом виде",
+        "it": "Mostra l'ultimo risultato quando è arrotolato"
+      },
+      "default": false
+    }
+  ]
+}

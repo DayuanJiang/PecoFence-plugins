@@ -1,0 +1,143 @@
+{
+  "id": "calendar",
+  "version": "1.0.1",
+  "api": 1,
+  "layer": "light",
+  "name": {
+    "en": "Calendar",
+    "zh-CN": "月历",
+    "zh-TW": "月曆",
+    "ja": "カレンダー",
+    "ko": "달력",
+    "de": "Kalender",
+    "fr": "Calendrier",
+    "es": "Calendario",
+    "pt-BR": "Calendário",
+    "ru": "Календарь",
+    "it": "Calendario"
+  },
+  "description": {
+    "en": "Browse months, see today at a glance, and optionally show ISO week numbers and the rolled-up date. Works offline with no permissions.",
+    "zh-CN": "浏览月份，一眼找到今天，并可选择显示 ISO 周数和收起标题栏日期。完全离线，无需任何权限。",
+    "zh-TW": "瀏覽月份，一眼找到今天，並可選擇顯示 ISO 週次與收合標題列日期。完全離線，無需任何權限。",
+    "ja": "月を切り替え、今日の日付や ISO 週番号、折りたたみタイトルバーの日付を確認できます。オフライン動作、権限不要。",
+    "ko": "월을 넘겨 보며 오늘 날짜, ISO 주차, 접힌 제목 표시줄 날짜를 확인할 수 있습니다. 오프라인 작동, 권한 불필요.",
+    "de": "Monate durchblättern, heute auf einen Blick sehen und optional ISO-Kalenderwochen sowie das Datum in der Titelleiste anzeigen. Offline und ohne Berechtigungen.",
+    "fr": "Parcourez les mois, repérez la date du jour et affichez en option les numéros de semaine ISO et la date en titre replié. Hors ligne et sans autorisation.",
+    "es": "Navega por los meses, consulta la fecha de hoy y muestra opcionalmente las semanas ISO y la fecha en el título plegado. Sin conexión y sin permisos.",
+    "pt-BR": "Navegue pelos meses, veja a data de hoje e exiba opcionalmente as semanas ISO e a data na barra recolhida. Offline e sem permissões.",
+    "ru": "Листайте месяцы, смотрите сегодняшнюю дату и при желании включайте номера недель ISO и дату в свёрнутом заголовке. Офлайн и без разрешений.",
+    "it": "Sfoglia i mesi, trova la data di oggi e mostra facoltativamente i numeri delle settimane ISO e la data nel titolo arrotolato. Offline e senza permessi."
+  },
+  "author": "snowyukitty",
+  "minPecoFence": "0.5.0",
+  "permissions": {},
+  "settings": [
+    {
+      "key": "weekStart",
+      "type": "choice",
+      "label": {
+        "en": "First day of week",
+        "zh-CN": "每周第一天",
+        "zh-TW": "每週第一天",
+        "ja": "週の始まり",
+        "ko": "한 주의 시작",
+        "de": "Erster Wochentag",
+        "fr": "Premier jour de la semaine",
+        "es": "Primer día de la semana",
+        "pt-BR": "Primeiro dia da semana",
+        "ru": "Первый день недели",
+        "it": "Primo giorno della settimana"
+      },
+      "options": [
+        {
+          "value": "monday",
+          "label": {
+            "en": "Monday",
+            "zh-CN": "星期一",
+            "zh-TW": "星期一",
+            "ja": "月曜日",
+            "ko": "월요일",
+            "de": "Montag",
+            "fr": "Lundi",
+            "es": "Lunes",
+            "pt-BR": "Segunda-feira",
+            "ru": "Понедельник",
+            "it": "Lunedì"
+          }
+        },
+        {
+          "value": "sunday",
+          "label": {
+            "en": "Sunday",
+            "zh-CN": "星期日",
+            "zh-TW": "星期日",
+            "ja": "日曜日",
+            "ko": "일요일",
+            "de": "Sonntag",
+            "fr": "Dimanche",
+            "es": "Domingo",
+            "pt-BR": "Domingo",
+            "ru": "Воскресенье",
+            "it": "Domenica"
+          }
+        }
+      ],
+      "default": "monday"
+    },
+    {
+      "key": "showWeekNumbers",
+      "type": "switch",
+      "label": {
+        "en": "Show ISO week numbers",
+        "zh-CN": "显示 ISO 周数",
+        "zh-TW": "顯示 ISO 週次",
+        "ja": "ISO 週番号を表示",
+        "ko": "ISO 주차 표시",
+        "de": "ISO-Kalenderwochen anzeigen",
+        "fr": "Afficher les numéros de semaine ISO",
+        "es": "Mostrar números de semana ISO",
+        "pt-BR": "Mostrar número da semana ISO",
+        "ru": "Показывать номера недель ISO",
+        "it": "Mostra i numeri delle settimane ISO"
+      },
+      "default": false
+    },
+    {
+      "key": "showCaption",
+      "type": "switch",
+      "label": {
+        "en": "Show today's date when rolled up",
+        "zh-CN": "收起时显示今日日期",
+        "zh-TW": "收合時顯示今日日期",
+        "ja": "折りたたみ時に今日の日付を表示",
+        "ko": "접었을 때 오늘 날짜 표시",
+        "de": "Heutiges Datum im eingeklappten Zustand anzeigen",
+        "fr": "Afficher la date du jour en position repliée",
+        "es": "Mostrar la fecha de hoy al plegar",
+        "pt-BR": "Mostrar a data de hoje ao recolher",
+        "ru": "Показывать сегодняшнюю дату в свёрнутом виде",
+        "it": "Mostra la data di oggi quando è arrotolato"
+      },
+      "default": true
+    },
+    {
+      "key": "largeGridText",
+      "type": "switch",
+      "label": {
+        "en": "Larger calendar text",
+        "zh-CN": "加大月历字号",
+        "zh-TW": "放大月曆文字",
+        "ja": "カレンダーの文字を大きくする",
+        "ko": "달력 글자 크게",
+        "de": "Größere Kalenderschrift",
+        "fr": "Agrandir le texte du calendrier",
+        "es": "Aumentar el texto del calendario",
+        "pt-BR": "Aumentar o texto do calendário",
+        "ru": "Увеличить текст календаря",
+        "it": "Ingrandisci il testo del calendario"
+      },
+      "default": false
+    }
+  ]
+}
