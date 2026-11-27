@@ -1,17 +1,17 @@
 {
   "id": "tree-todo",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "api": 1,
-  "layer": "web",
+  "layer": "light",
   "name": {
     "en": "Tree To-do",
     "zh-CN": "多层级待办",
     "zh-TW": "多層級待辦"
   },
   "description": {
-    "en": "Minimal Kite-style multi-level to-do outline: bottom + bar, Enter to add below, Tab/Shift+Tab to nest/outdent, hover urgency tags, two-step delete, and pull unfinished to today. Offline.",
-    "zh-CN": "极简仿 Kite 手感的多层级待办：底部 + 新建、回车向下续加、Tab/Shift+Tab 升降层级、悬停紧急标签、二段对勾删除与一键未完成挪到今天。纯本地离线。",
-    "zh-TW": "極簡仿 Kite 手感的多層級待辦：底部 + 新增、Enter 向下續加、Tab/Shift+Tab 升降層級、懸停緊急標籤、二段對勾刪除與一鍵未完成挪到今天。純本地離線。"
+    "en": "Native lightweight (~100 KB) multi-level to-do outline: weekly date bar, subtask progress badges, hover urgency tags, two-step delete, and pull unfinished to today. Offline.",
+    "zh-CN": "原生轻量级（约 100 KB 内存）多层级桌面待办：原生玻璃风格、周日历条、子任务进度折叠、悬停紧急标签、二段对勾删除与一键未完成挪到今天。纯本地离线。",
+    "zh-TW": "原生輕量級（約 100 KB 記憶體）多層級桌面待辦：原生玻璃風格、週日曆條、子任務進度摺疊、懸停緊急標籤、二段勾選刪除與一鍵未完成挪到今天。純本地離線。"
   },
   "author": "MocheResume",
   "minPecoFence": "0.5.0",
@@ -24,6 +24,16 @@
         "en": "Show weekly date strip",
         "zh-CN": "显示顶部周日历条",
         "zh-TW": "顯示頂部週日曆條"
+      },
+      "default": true
+    },
+    {
+      "key": "showProgressBar",
+      "type": "switch",
+      "label": {
+        "en": "Show daily progress bar",
+        "zh-CN": "显示当日进度条",
+        "zh-TW": "顯示當日進度條"
       },
       "default": true
     },
@@ -56,16 +66,6 @@
         "zh-TW": "勾選父任務時同步完成所有子任務"
       },
       "default": true
-    },
-    {
-      "key": "compactMode",
-      "type": "switch",
-      "label": {
-        "en": "Compact row spacing",
-        "zh-CN": "紧凑行距模式",
-        "zh-TW": "緊湊行距模式"
-      },
-      "default": false
     }
   ]
 }
